@@ -1,19 +1,35 @@
+
 import React, { useEffect, useState } from 'react';
-import { Download, Pause, Play, Trash2, Wifi, Loader2 } from 'lucide-react';
+import { Wifi, Loader2, DownloadCloud } from 'lucide-react';
 import { api } from '../services/api';
-import { QueueItem } from '../types';
+import { QueueItem, AppConfig } from '../types';
 
 const ActivityQueue: React.FC = () => {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [source, setSource] = useState<'sabnzbd' | 'arrs'>('arrs');
 
   useEffect(() => {
     const fetchQueue = async () => {
         setIsLoading(true);
         const saved = localStorage.getItem('dashboarrd_config');
         if (saved) {
-            const config = JSON.parse(saved);
+            const config: AppConfig = JSON.parse(saved);
+            
+            // Priority: SABnzbd
+            if (config.sabnzbd?.enabled) {
+                const sabQueue = await api.getSabQueue(config.sabnzbd);
+                if (sabQueue) {
+                    setQueue(sabQueue);
+                    setSource('sabnzbd');
+                    setIsLoading(false);
+                    return;
+                }
+            }
+
+            // Fallback: Radarr/Sonarr
             try {
+                setSource('arrs');
                 const [rQueue, sQueue] = await Promise.all([
                     api.getQueue(config.radarr, 'movie'),
                     api.getQueue(config.sonarr, 'series')
@@ -27,7 +43,7 @@ const ActivityQueue: React.FC = () => {
     };
     
     fetchQueue();
-    const interval = setInterval(fetchQueue, 5000);
+    const interval = setInterval(fetchQueue, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -36,8 +52,8 @@ const ActivityQueue: React.FC = () => {
       <div className="p-4 border-b border-helm-700/50 bg-helm-900/90 backdrop-blur-md sticky top-0 z-10">
         <h1 className="text-2xl font-bold text-white">Activity</h1>
         <div className="flex items-center gap-2 mt-1 text-sm text-helm-400">
-          <Wifi size={14} className="text-emerald-400" />
-          <span>Queue Manager</span>
+          {source === 'sabnzbd' ? <DownloadCloud size={14} className="text-orange-400" /> : <Wifi size={14} className="text-emerald-400" />}
+          <span>{source === 'sabnzbd' ? 'SABnzbd Queue' : 'Arr Queue'}</span>
         </div>
       </div>
 
@@ -65,8 +81,8 @@ const ActivityQueue: React.FC = () => {
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-helm-400">
                 <span>{item.size}</span>
-                <span className={item.status === 'Downloading' ? 'text-helm-accent' : ''}>
-                   {item.status}
+                <span className={item.status === 'Downloading' ? 'text-helm-accent font-bold' : ''}>
+                   {item.status} {item.speed !== 'Unknown' && `• ${item.speed}/s`}
                 </span>
                 <span>{item.timeLeft}</span>
               </div>

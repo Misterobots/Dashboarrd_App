@@ -1,3 +1,4 @@
+
 export enum MediaType {
   MOVIE = 'MOVIE',
   SERIES = 'SERIES',
@@ -25,6 +26,8 @@ export interface MediaItem {
   path?: string;
   size?: string;
   studio?: string;
+  // Jellyseerr specific
+  jellyseerrId?: number;
 }
 
 export interface QueueItem {
@@ -32,21 +35,16 @@ export interface QueueItem {
   title: string;
   size: string;
   timeLeft: string;
-  status: 'Downloading' | 'Paused' | 'Queued';
+  status: 'Downloading' | 'Paused' | 'Queued' | 'Completed' | 'Failed';
   speed: string;
   progress: number;
-}
-
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'model';
-  text: string;
-  isThinking?: boolean;
-  recommendations?: MediaItem[];
 }
 
 export interface AppConfig {
   onboarded: boolean;
   radarr: { url: string; apiKey: string; enabled: boolean };
   sonarr: { url: string; apiKey: string; enabled: boolean };
+  jellyseerr: { url: string; apiKey: string; enabled: boolean };
+  sabnzbd: { url: string; apiKey: string; enabled: boolean };
+  jellyfin: { url: string; apiKey: string; enabled: boolean };
 }

@@ -28,6 +28,10 @@ Since this app is not on the Play Store, you must install it manually via the Gi
 If you prefer to build the source code yourself:
 
 ```bash
+# 0. Clone Repository
+git clone https://github.com/Misterobots/Dashboarrd_App.git
+cd Dashboarrd_App
+
 # 1. Install Dependencies
 npm install
 

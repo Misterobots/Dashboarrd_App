@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Activity, HardDrive, Wifi, ArrowDown, ArrowUp, Download, CheckCircle2, XCircle, Server } from 'lucide-react';
+import { Activity, HardDrive, Wifi, ArrowDown, ArrowUp, Download, CheckCircle2, XCircle, Server, PlayCircle, Users } from 'lucide-react';
 import { api } from '../services/api';
 import { MOCK_CHART_DATA } from '../constants';
+import { AppConfig } from '../types';
 
 const StatCard: React.FC<{
   title: string;
@@ -30,18 +32,24 @@ const Dashboard: React.FC = () => {
   const [activeDownloads, setActiveDownloads] = useState(0);
   const [totalFreeSpace, setTotalFreeSpace] = useState('0 GB');
   const [services, setServices] = useState<{name: string, connected: boolean, url: string}[]>([]);
+  const [jellyfinStats, setJellyfinStats] = useState<{active: number, name: string} | null>(null);
+  const [sabStats, setSabStats] = useState<{status: string, speed: string} | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
         const saved = localStorage.getItem('dashboarrd_config');
         if (saved) {
-            const config = JSON.parse(saved);
+            const config: AppConfig = JSON.parse(saved);
             
             setServices([
                 { name: 'Radarr', connected: config.radarr?.enabled, url: config.radarr?.url },
-                { name: 'Sonarr', connected: config.sonarr?.enabled, url: config.sonarr?.url }
+                { name: 'Sonarr', connected: config.sonarr?.enabled, url: config.sonarr?.url },
+                { name: 'Jellyseerr', connected: config.jellyseerr?.enabled, url: config.jellyseerr?.url },
+                { name: 'SABnzbd', connected: config.sabnzbd?.enabled, url: config.sabnzbd?.url },
+                { name: 'Jellyfin', connected: config.jellyfin?.enabled, url: config.jellyfin?.url },
             ]);
 
+            // Fetch Arr Data
             let queueCount = 0;
             let freeSpace = 0;
 
@@ -57,8 +65,18 @@ const Dashboard: React.FC = () => {
                      const largestMount = diskData.reduce((prev:any, current:any) => (prev.freeSpace > current.freeSpace) ? prev : current);
                      freeSpace = largestMount.freeSpace;
                 }
-            } catch (e) {
-                console.error("Error fetching dashboard stats", e);
+            } catch (e) { console.error(e); }
+
+            // Fetch Jellyfin
+            if (config.jellyfin?.enabled) {
+                const jf = await api.getJellyfinStatus(config.jellyfin);
+                if (jf) setJellyfinStats({ active: jf.activeStreams, name: jf.serverName });
+            }
+
+            // Fetch SABnzbd
+            if (config.sabnzbd?.enabled) {
+                const sab = await api.getSabStatus(config.sabnzbd);
+                if (sab) setSabStats({ status: sab.status, speed: sab.speed });
             }
 
             setActiveDownloads(queueCount);
@@ -83,17 +101,16 @@ const Dashboard: React.FC = () => {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                 </span>
-                <span className="text-xs text-green-400 font-medium">System Online</span>
+                <span className="text-xs text-green-400 font-medium">Online</span>
             </div>
         </div>
 
         <div className="flex gap-2 overflow-x-auto no-scrollbar">
             {services.map(s => (
-                <div key={s.name} className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${s.connected ? 'bg-helm-800 border-helm-700' : 'bg-helm-800/50 border-helm-700/30'}`}>
+                <div key={s.name} className={`flex items-center gap-2 px-3 py-2 rounded-lg border flex-shrink-0 ${s.connected ? 'bg-helm-800 border-helm-700' : 'bg-helm-800/50 border-helm-700/30'}`}>
                     {s.connected ? <CheckCircle2 size={14} className="text-emerald-400" /> : <XCircle size={14} className="text-helm-600" />}
                     <div className="flex flex-col">
                         <span className={`text-xs font-bold ${s.connected ? 'text-white' : 'text-helm-500'}`}>{s.name}</span>
-                        <span className="text-[10px] text-helm-500 max-w-[100px] truncate">{s.connected ? s.url.replace('http://', '') : 'Not Configured'}</span>
                     </div>
                 </div>
             ))}
@@ -115,20 +132,42 @@ const Dashboard: React.FC = () => {
           icon={<HardDrive size={18} />} 
           color="bg-blue-500" 
         />
-        <StatCard 
-          title="Warnings" 
-          value="0"
-          subValue="System Health"
-          icon={<Activity size={18} />} 
-          color="bg-purple-500" 
-        />
-        <StatCard 
-          title="Updates" 
-          value="Up to Date"
-          subValue="No updates pending"
-          icon={<ArrowUp size={18} />} 
-          color="bg-orange-500" 
-        />
+        
+        {jellyfinStats ? (
+             <StatCard 
+             title="Jellyfin" 
+             value={jellyfinStats.active.toString()}
+             subValue="Active Streams"
+             icon={<PlayCircle size={18} />} 
+             color="bg-purple-500" 
+           />
+        ) : (
+            <StatCard 
+            title="System" 
+            value="Good"
+            subValue="Health Check"
+            icon={<Activity size={18} />} 
+            color="bg-purple-500" 
+          />
+        )}
+
+        {sabStats ? (
+            <StatCard 
+            title="Downloader" 
+            value={sabStats.speed}
+            subValue={sabStats.status}
+            icon={<Download size={18} />} 
+            color="bg-orange-500" 
+          />
+        ) : (
+            <StatCard 
+            title="Updates" 
+            value="Up to Date"
+            subValue="No Pending"
+            icon={<ArrowUp size={18} />} 
+            color="bg-orange-500" 
+          />
+        )}
       </div>
 
       <div className="bg-helm-800 rounded-2xl border border-helm-700 p-5 shadow-lg">

@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
-import { Save, Server, CheckCircle, XCircle, Eye, EyeOff, AlertTriangle, ShieldAlert, Trash2 } from 'lucide-react';
+import { Save, Server, CheckCircle, XCircle, Eye, EyeOff, ShieldAlert, Trash2, Database, Tv, DownloadCloud, Github, ExternalLink } from 'lucide-react';
 import { api } from '../services/api';
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { AppConfig } from '../types';
 
 interface ServiceConfig {
   url: string;
@@ -10,15 +12,14 @@ interface ServiceConfig {
   enabled: boolean;
 }
 
-interface ConfigMap {
-  radarr: ServiceConfig;
-  sonarr: ServiceConfig;
-}
-
 const Settings: React.FC = () => {
-  const [config, setConfig] = useState<ConfigMap>({
+  const [config, setConfig] = useState<AppConfig>({
+    onboarded: true,
     radarr: { url: '', apiKey: '', enabled: false },
-    sonarr: { url: '', apiKey: '', enabled: false }
+    sonarr: { url: '', apiKey: '', enabled: false },
+    jellyseerr: { url: '', apiKey: '', enabled: false },
+    sabnzbd: { url: '', apiKey: '', enabled: false },
+    jellyfin: { url: '', apiKey: '', enabled: false }
   });
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'success' | 'error'>>({});
@@ -28,10 +29,10 @@ const Settings: React.FC = () => {
     if (saved) setConfig(JSON.parse(saved));
   }, []);
 
-  const handleSave = async (service: keyof ConfigMap) => {
+  const handleSave = async (service: keyof Omit<AppConfig, 'onboarded'>, type: 'arr' | 'sabnzbd' | 'jellyfin' | 'jellyseerr' = 'arr') => {
     setTestStatus(prev => ({ ...prev, [service]: 'testing' }));
     
-    const isConnected = await api.testConnection(config[service].url, config[service].apiKey);
+    const isConnected = await api.testConnection(config[service].url, config[service].apiKey, type);
     
     if (isConnected) {
          setTestStatus(prev => ({ ...prev, [service]: 'success' }));
@@ -44,7 +45,7 @@ const Settings: React.FC = () => {
     }
   };
 
-  const updateConfig = (service: keyof ConfigMap, field: keyof ServiceConfig, value: string) => {
+  const updateConfig = (service: keyof Omit<AppConfig, 'onboarded'>, field: keyof ServiceConfig, value: string) => {
     setConfig(prev => ({
         ...prev,
         [service]: { ...prev[service], [field]: value }
@@ -61,11 +62,11 @@ const Settings: React.FC = () => {
     }
   };
 
-  const renderServiceCard = (key: keyof ConfigMap, title: string, port: string) => (
+  const renderServiceCard = (key: keyof Omit<AppConfig, 'onboarded'>, title: string, placeholder: string, type: 'arr' | 'sabnzbd' | 'jellyfin' | 'jellyseerr', icon: React.ReactNode) => (
     <div className="bg-helm-800 rounded-xl border border-helm-700 p-4 space-y-4 animate-in slide-in-from-bottom duration-500">
         <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-                <Server size={18} className="text-helm-accent" />
+                <div className="text-helm-accent">{icon}</div>
                 <h3 className="font-semibold text-white">{title}</h3>
             </div>
             {testStatus[key] === 'success' && (
@@ -90,7 +91,7 @@ const Settings: React.FC = () => {
                 <label className="text-[10px] text-helm-400 uppercase font-bold tracking-wider mb-1.5 block ml-1">Server URL</label>
                 <input 
                     type="text" 
-                    placeholder={`http://192.168.1.x:${port}`}
+                    placeholder={placeholder}
                     value={config[key].url}
                     onChange={(e) => updateConfig(key, 'url', e.target.value)}
                     className="w-full bg-helm-900 border border-helm-700 rounded-lg p-3 text-sm text-white focus:border-helm-accent outline-none placeholder-helm-600 transition-colors"
@@ -103,7 +104,7 @@ const Settings: React.FC = () => {
                         type={showKeys[key] ? "text" : "password"}
                         value={config[key].apiKey}
                         onChange={(e) => updateConfig(key, 'apiKey', e.target.value)}
-                        placeholder="Found in Settings > General"
+                        placeholder="See Settings > General or API Key"
                         className="w-full bg-helm-900 border border-helm-700 rounded-lg p-3 text-sm text-white focus:border-helm-accent outline-none pr-10 placeholder-helm-600 transition-colors"
                     />
                     <button 
@@ -117,18 +118,13 @@ const Settings: React.FC = () => {
         </div>
 
         <button 
-            onClick={() => handleSave(key)}
+            onClick={() => handleSave(key, type)}
             disabled={testStatus[key] === 'testing' || !config[key].url || !config[key].apiKey}
             className="w-full py-2.5 bg-helm-700 hover:bg-helm-600 disabled:opacity-50 disabled:cursor-not-allowed active:bg-helm-accent rounded-lg text-sm font-medium text-white transition-all flex items-center justify-center gap-2 mt-2"
         >
             <Save size={16} />
             {testStatus[key] === 'success' ? 'Saved' : 'Test & Save Connection'}
         </button>
-        {testStatus[key] === 'error' && (
-             <p className="text-[10px] text-red-400 text-center mt-2 px-4">
-                Connection failed. Ensure CORS is enabled if using PWA mode.
-             </p>
-        )}
     </div>
   );
 
@@ -146,21 +142,44 @@ const Settings: React.FC = () => {
                     <div className="space-y-1">
                         <p className="text-xs font-bold text-white uppercase tracking-wider">PWA Mode (Browser)</p>
                         <p className="text-xs text-helm-300 leading-relaxed">
-                            To connect to your local server, you must <strong>enable CORS</strong> in Radarr/Sonarr settings.
+                            Enable CORS on all your services to allow the web app to connect.
                         </p>
                     </div>
                 </div>
             )}
 
-            <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl flex gap-3">
-                <AlertTriangle className="text-amber-400 shrink-0" size={20} />
-                <p className="text-xs text-amber-200 leading-relaxed">
-                    <strong>Important:</strong> Enter your local IP address (e.g. 192.168.1.50) rather than 'localhost'.
-                </p>
-            </div>
+            {renderServiceCard('radarr', 'Radarr (Movies)', 'http://192.168.1.x:7878', 'arr', <Database size={18} />)}
+            {renderServiceCard('sonarr', 'Sonarr (TV)', 'http://192.168.1.x:8989', 'arr', <Tv size={18} />)}
+            {renderServiceCard('jellyseerr', 'Jellyseerr (Requests)', 'http://192.168.1.x:5055', 'jellyseerr', <Server size={18} />)}
+            {renderServiceCard('sabnzbd', 'SABnzbd (Downloads)', 'http://192.168.1.x:8080', 'sabnzbd', <DownloadCloud size={18} />)}
+            {renderServiceCard('jellyfin', 'Jellyfin (Media Server)', 'http://192.168.1.x:8096', 'jellyfin', <Tv size={18} />)}
 
-            {renderServiceCard('radarr', 'Radarr (Movies)', '7878')}
-            {renderServiceCard('sonarr', 'Sonarr (TV)', '8989')}
+            <div className="bg-helm-800 rounded-xl border border-helm-700 p-4 space-y-3">
+                <div className="flex items-center gap-2 mb-1">
+                    <Github size={18} className="text-white" />
+                    <h3 className="font-semibold text-white">Project Info</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <a 
+                        href="https://github.com/Misterobots/Dashboarrd_App" 
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-3 rounded-lg bg-helm-900 border border-helm-700 active:bg-helm-700 transition-colors"
+                    >
+                        <span className="text-xs font-medium text-helm-300">View Source</span>
+                        <ExternalLink size={14} className="text-helm-500" />
+                    </a>
+                    <a 
+                        href="https://github.com/Misterobots/Dashboarrd_App/releases" 
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-3 rounded-lg bg-helm-900 border border-helm-700 active:bg-helm-700 transition-colors"
+                    >
+                        <span className="text-xs font-medium text-helm-300">Updates</span>
+                        <ExternalLink size={14} className="text-helm-500" />
+                    </a>
+                </div>
+            </div>
 
             <button 
                 onClick={resetAll}
@@ -170,7 +189,7 @@ const Settings: React.FC = () => {
             </button>
             
             <div className="text-center py-6">
-                <p className="text-xs text-helm-600">Dashboarrd Mobile v1.0.3</p>
+                <p className="text-xs text-helm-600">Dashboarrd Mobile v1.1.0</p>
             </div>
         </div>
     </div>

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Plus, Loader2, Check, Film, Tv, Info, AlertCircle } from 'lucide-react';
+
+import React, { useState } from 'react';
+import { Search, Plus, Loader2, Check, Film, Tv, AlertCircle } from 'lucide-react';
 import { api } from '../services/api';
-import { MediaType, Status, MediaItem } from '../types';
+import { MediaType, AppConfig } from '../types';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 const Discovery: React.FC = () => {
@@ -27,20 +28,30 @@ const Discovery: React.FC = () => {
         setIsLoading(false);
         return;
       }
-      const config = JSON.parse(saved);
-      const serviceConfig = searchType === MediaType.MOVIE ? config.radarr : config.sonarr;
+      const config: AppConfig = JSON.parse(saved);
 
-      if (!serviceConfig?.enabled) {
-        setError(`${searchType === MediaType.MOVIE ? 'Radarr' : 'Sonarr'} is not enabled in settings.`);
-        setIsLoading(false);
-        return;
+      // Priority: Use Jellyseerr if enabled
+      if (config.jellyseerr?.enabled) {
+          const jellyResults = await api.jellyseerrSearch(config.jellyseerr, query);
+          // Filter by type if needed, though Jellyseerr returns mixed
+          const filtered = jellyResults.filter(r => 
+              searchType === MediaType.MOVIE ? r.mediaType === 'movie' : r.mediaType === 'tv'
+          );
+          setResults(filtered);
+          if (filtered.length === 0) setError("No results found on Jellyseerr.");
+      } else {
+          // Fallback to Radarr/Sonarr
+          const serviceConfig = searchType === MediaType.MOVIE ? config.radarr : config.sonarr;
+          if (!serviceConfig?.enabled) {
+            setError(`${searchType === MediaType.MOVIE ? 'Radarr' : 'Sonarr'} is not enabled.`);
+            setIsLoading(false);
+            return;
+          }
+          const lookupResults = await api.lookup(serviceConfig, query, searchType);
+          setResults(lookupResults || []);
+          if (lookupResults?.length === 0) setError("No results found.");
       }
 
-      const lookupResults = await api.lookup(serviceConfig, query, searchType);
-      setResults(lookupResults || []);
-      if (lookupResults?.length === 0) {
-        setError("No results found on the server.");
-      }
     } catch (err) {
       setError("Failed to reach media server. Check your connection.");
     } finally {
@@ -54,10 +65,16 @@ const Discovery: React.FC = () => {
 
     try {
       const saved = localStorage.getItem('dashboarrd_config');
-      const config = JSON.parse(saved!);
-      const serviceConfig = searchType === MediaType.MOVIE ? config.radarr : config.sonarr;
+      const config: AppConfig = JSON.parse(saved!);
 
-      const success = await api.addMedia(serviceConfig, item, searchType);
+      let success = false;
+
+      if (config.jellyseerr?.enabled) {
+          success = await api.jellyseerrRequest(config.jellyseerr, item, searchType);
+      } else {
+          const serviceConfig = searchType === MediaType.MOVIE ? config.radarr : config.sonarr;
+          success = await api.addMedia(serviceConfig, item, searchType);
+      }
       
       if (success) {
         await Haptics.impact({ style: ImpactStyle.Heavy });
@@ -118,7 +135,7 @@ const Discovery: React.FC = () => {
         {isLoading && (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Loader2 size={32} className="animate-spin text-helm-accent" />
-            <p className="text-sm text-helm-500 font-medium">Searching {searchType === MediaType.MOVIE ? 'Radarr' : 'Sonarr'}...</p>
+            <p className="text-sm text-helm-500 font-medium">Searching...</p>
           </div>
         )}
 
@@ -132,7 +149,7 @@ const Discovery: React.FC = () => {
         {!isLoading && !error && results.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-center px-6 opacity-40">
             <Search size={48} className="text-helm-700 mb-4" />
-            <p className="text-helm-400 text-sm">Enter a title to discover new media to add to your library.</p>
+            <p className="text-helm-400 text-sm">Enter a title to discover new media.</p>
           </div>
         )}
 
@@ -158,7 +175,7 @@ const Discovery: React.FC = () => {
                   <h3 className="font-bold text-white text-xs line-clamp-2 mb-3 h-8 leading-tight">{item.title}</h3>
                   
                   <button 
-                    disabled={reqStatus === 'loading' || reqStatus === 'done' || item.added !== undefined}
+                    disabled={reqStatus === 'loading' || reqStatus === 'done' || item.added}
                     onClick={() => handleAdd(item)}
                     className={`mt-auto flex items-center justify-center gap-1.5 w-full text-white text-[10px] py-2.5 rounded-xl transition-all font-black uppercase tracking-wider ${
                         item.added ? 'bg-helm-700 opacity-50' :
@@ -168,7 +185,7 @@ const Discovery: React.FC = () => {
                   >
                     {item.added ? 'In Library' : 
                      reqStatus === 'loading' ? <Loader2 size={12} className="animate-spin" /> : 
-                     reqStatus === 'done' ? <><Check size={12} /> Added</> : 
+                     reqStatus === 'done' ? <><Check size={12} /> Requested</> : 
                      reqStatus === 'error' ? 'Retry' : <><Plus size={12} /> Request</>}
                   </button>
                 </div>
