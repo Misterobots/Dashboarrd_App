@@ -53,6 +53,21 @@ const makeRequest = async (url: string, options: RequestInit = {}, timeout = 120
   }
 };
 
+const getImageUrl = (baseUrl: string, apiKey: string, images: any[], id: string) => {
+    if (!images || !Array.isArray(images)) return `https://picsum.photos/300/450?random=${id}`;
+    
+    // Find poster (case insensitive)
+    const poster = images.find((i: any) => i.coverType.toLowerCase() === 'poster');
+    if (!poster) return `https://picsum.photos/300/450?random=${id}`;
+
+    // Prefer local URL with API Key for authentication
+    if (poster.url) {
+        return `${baseUrl}${poster.url}?apikey=${apiKey}`;
+    }
+    
+    return poster.remoteUrl;
+};
+
 export const api = {
   async testConnection(url: string, apiKey: string): Promise<boolean> {
     const baseUrl = getBaseUrl(url);
@@ -158,7 +173,7 @@ export const api = {
         year: m.year,
         type: MediaType.MOVIE,
         status: m.hasFile ? Status.AVAILABLE : (m.monitored ? Status.MISSING : Status.REQUESTED),
-        posterUrl: m.images.find((i:any) => i.coverType === 'poster')?.remoteUrl || `https://picsum.photos/300/450?random=${m.id}`, 
+        posterUrl: getImageUrl(baseUrl, config.apiKey, m.images, m.id), 
         overview: m.overview,
         rating: m.ratings?.value,
         path: m.path,
@@ -185,7 +200,7 @@ export const api = {
         year: s.year,
         type: MediaType.SERIES,
         status: s.statistics?.percentOfEpisodes === 100 ? Status.AVAILABLE : Status.MISSING,
-        posterUrl: s.images.find((i:any) => i.coverType === 'poster')?.remoteUrl || `https://picsum.photos/300/450?random=${s.id}`,
+        posterUrl: getImageUrl(baseUrl, config.apiKey, s.images, s.id),
         overview: s.overview,
         rating: s.ratings?.value,
         path: s.path,

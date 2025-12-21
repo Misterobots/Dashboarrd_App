@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { MediaItem, Status, MediaType } from '../types';
-import { Play, Download, Clock, AlertCircle } from 'lucide-react';
+import { Play, Download, Clock, AlertCircle, Film } from 'lucide-react';
 
 interface MediaCardProps {
   item: MediaItem;
@@ -9,6 +9,8 @@ interface MediaCardProps {
 }
 
 const MediaCard: React.FC<MediaCardProps> = ({ item, compact = false, onClick }) => {
+  const [imgError, setImgError] = useState(false);
+
   const getStatusIcon = (status: Status) => {
     switch (status) {
       case Status.AVAILABLE: return <Play size={16} className="text-green-400" fill="currentColor" />;
@@ -33,7 +35,20 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, compact = false, onClick })
         onClick={() => onClick?.(item)}
         className="flex items-center gap-3 p-3 bg-helm-800 rounded-xl border border-helm-700 active:scale-95 transition-transform"
       >
-        <img src={item.posterUrl} alt={item.title} className="w-12 h-16 object-cover rounded-md" />
+        <div className="w-12 h-16 rounded-md overflow-hidden bg-helm-900 flex-shrink-0">
+          {!imgError ? (
+            <img 
+              src={item.posterUrl} 
+              alt={item.title} 
+              className="w-full h-full object-cover" 
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-helm-600">
+              <Film size={16} />
+            </div>
+          )}
+        </div>
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-sm truncate text-white">{item.title}</h4>
           <div className="flex items-center gap-2 mt-1">
@@ -56,12 +71,21 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, compact = false, onClick })
       onClick={() => onClick?.(item)}
       className="group relative bg-helm-800 rounded-2xl overflow-hidden border border-helm-700 shadow-lg hover:shadow-indigo-500/10 active:scale-95 transition-all duration-300 cursor-pointer"
     >
-      <div className="aspect-[2/3] w-full overflow-hidden relative">
-        <img 
-          src={item.posterUrl} 
-          alt={item.title} 
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-        />
+      <div className="aspect-[2/3] w-full overflow-hidden relative bg-helm-900">
+        {!imgError ? (
+          <img 
+            src={item.posterUrl} 
+            alt={item.title} 
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+            <Film size={32} className="text-helm-700 mb-2" />
+            <p className="text-xs text-helm-500 font-medium line-clamp-3">{item.title}</p>
+          </div>
+        )}
+        
         <div className="absolute inset-0 bg-gradient-to-t from-helm-900 via-transparent to-transparent opacity-80" />
         <div className="absolute bottom-3 left-3 right-3">
           <h3 className="font-bold text-white text-lg leading-tight line-clamp-2">{item.title}</h3>

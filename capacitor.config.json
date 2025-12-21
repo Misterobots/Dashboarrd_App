@@ -3,8 +3,9 @@
   "appName": "Dashboarrd",
   "webDir": "dist",
   "server": {
-    "androidScheme": "https",
-    "iosScheme": "dashboarrd"
+    "androidScheme": "http",
+    "iosScheme": "dashboarrd",
+    "cleartext": true
   },
   "plugins": {
     "CapacitorHttp": {
