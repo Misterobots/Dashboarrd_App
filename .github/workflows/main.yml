@@ -17,12 +17,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Install Dependencies
         run: |
           npm install
-          npm install @capacitor/android
+          npm install @capacitor/android@6.0.0
 
       - name: Build Web Project
         run: npm run build
