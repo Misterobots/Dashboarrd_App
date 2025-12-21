@@ -1,11 +1,22 @@
-<div align="center">
+# Dashboarrd Mobile - Cloud Build Guide
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+This project is a dedicated, programmatic controller for your Radarr and Sonarr media servers, built for Android.
 
-  <h1>Built with AI Studio</h2>
+## How to get your APK without a computer:
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+1. **Create a GitHub Repository**: Create a new private or public repo on GitHub.
+2. **Upload this code**: Push all files to that repository.
+3. **Set your API Key (Optional)**:
+   - Go to your Repo **Settings** > **Secrets and variables** > **Actions**.
+   - Create a "New repository secret" named `GEMINI_API_KEY` (if utilizing any future AI features).
+4. **Run the Build**:
+   - Go to the **Actions** tab in your GitHub repo.
+   - Select "Build Android APK" on the left.
+   - Click **Run workflow**.
+5. **Download**:
+   - Wait ~8 minutes for completion.
+   - Click on the completed run.
+   - Scroll down to **Artifacts** and download `dashboarrd-mobile-debug`.
+   - Transfer the `.apk` to your phone and install it!
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
-
-</div>
+*Note: You may need to enable "Install from Unknown Sources" on your Android phone to install the APK.*

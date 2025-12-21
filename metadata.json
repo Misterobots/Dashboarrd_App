@@ -1,0 +1,5 @@
+{
+  "name": "Dashboarrd Mobile",
+  "description": "An Android-compatible, programmatic dashboard for your home media server ecosystem. Manage your library, monitor system health, and discover content through direct server integration.",
+  "requestFramePermissions": []
+}
