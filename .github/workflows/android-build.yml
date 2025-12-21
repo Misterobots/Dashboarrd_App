@@ -22,7 +22,7 @@ jobs:
       - name: Install Dependencies
         run: |
           npm install
-          npm install @capacitor/android
+          npm install @capacitor/android@6
 
       - name: Build Web Project
         run: npm run build
