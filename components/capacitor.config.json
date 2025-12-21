@@ -1,0 +1,14 @@
+{
+  "appId": "com.dashboarrd.mobile",
+  "appName": "Dashboarrd",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "dashboarrd"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}
