@@ -2,7 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { CapacitorHttp } from '@capacitor/core';
 
 // Current app version - must match package.json
-export const APP_VERSION = '1.1.5';
+export const APP_VERSION = '1.1.6';
 
 // GitHub repository info
 const GITHUB_OWNER = 'Misterobots';
