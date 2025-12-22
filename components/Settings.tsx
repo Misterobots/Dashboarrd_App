@@ -31,11 +31,46 @@ const Settings: React.FC<SettingsProps> = ({ onAdminToggle, adminEnabled = false
     });
     const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
     const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'success' | 'error'>>({});
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     useEffect(() => {
-        const saved = localStorage.getItem('dashboarrd_config');
-        if (saved) setConfig(JSON.parse(saved));
+        try {
+            const saved = localStorage.getItem('dashboarrd_config');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                // Safely merge with defaults to handle missing fields
+                setConfig(prev => ({
+                    ...prev,
+                    radarr: { ...prev.radarr, ...parsed.radarr },
+                    sonarr: { ...prev.sonarr, ...parsed.sonarr },
+                    jellyseerr: { ...prev.jellyseerr, ...parsed.jellyseerr },
+                    sabnzbd: { ...prev.sabnzbd, ...parsed.sabnzbd },
+                    jellyfin: { ...prev.jellyfin, ...parsed.jellyfin }
+                }));
+            }
+        } catch (e) {
+            setLoadError('Failed to load config: ' + String(e));
+            console.error('Settings config load error:', e);
+        }
     }, []);
+
+    // Show error if config failed to load
+    if (loadError) {
+        return (
+            <div className="h-full flex flex-col items-center justify-center p-4 bg-helm-900">
+                <p className="text-red-400 text-sm mb-4">{loadError}</p>
+                <button
+                    onClick={() => {
+                        localStorage.removeItem('dashboarrd_config');
+                        window.location.reload();
+                    }}
+                    className="px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm"
+                >
+                    Reset Config & Reload
+                </button>
+            </div>
+        );
+    }
 
     const testAndSave = async (service: 'radarr' | 'sonarr' | 'jellyseerr' | 'sabnzbd' | 'jellyfin') => {
         const serviceConfig = config[service];
