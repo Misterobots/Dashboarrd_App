@@ -16,11 +16,11 @@ interface ServiceConfig {
 }
 
 interface SettingsProps {
-    onModeSwitch?: () => void;
-    isUserMode?: boolean;
+    onAdminToggle?: () => void;
+    adminEnabled?: boolean;
 }
 
-const Settings: React.FC<SettingsProps> = ({ onModeSwitch, isUserMode = false }) => {
+const Settings: React.FC<SettingsProps> = ({ onAdminToggle, adminEnabled = false }) => {
     const [config, setConfig] = useState<AppConfig>({
         onboarded: true,
         radarr: { url: '', apiKey: '', enabled: false },
@@ -127,8 +127,8 @@ const Settings: React.FC<SettingsProps> = ({ onModeSwitch, isUserMode = false })
                     onClick={() => testAndSave(key)}
                     disabled={testStatus[key] === 'testing'}
                     className={`w-full p-3 rounded-lg flex items-center justify-center gap-2 font-bold text-sm transition-colors disabled:opacity-50 ${testStatus[key] === 'success' ? 'bg-emerald-600 text-white' :
-                            testStatus[key] === 'error' ? 'bg-red-600 text-white' :
-                                'bg-helm-accent text-white'
+                        testStatus[key] === 'error' ? 'bg-red-600 text-white' :
+                            'bg-helm-accent text-white'
                         }`}
                 >
                     <Save size={16} />
@@ -190,19 +190,19 @@ const Settings: React.FC<SettingsProps> = ({ onModeSwitch, isUserMode = false })
                     <Trash2 size={14} /> Clear All Settings
                 </button>
 
-                {onModeSwitch && (
+                {onAdminToggle && (
                     <button
-                        onClick={onModeSwitch}
-                        className="w-full mt-3 flex items-center justify-center gap-2 p-3 bg-helm-accent/10 border border-helm-accent/20 rounded-xl text-xs font-medium text-helm-accent hover:bg-helm-accent/20 transition-colors"
+                        onClick={onAdminToggle}
+                        className={`w-full mt-3 flex items-center justify-center gap-2 p-3 rounded-xl text-xs font-medium transition-colors ${adminEnabled ? 'bg-orange-500/10 border border-orange-500/20 text-orange-400 hover:bg-orange-500/20' : 'bg-helm-accent/10 border border-helm-accent/20 text-helm-accent hover:bg-helm-accent/20'}`}
                     >
-                        {isUserMode ? <Shield size={14} /> : <User size={14} />}
-                        Switch to {isUserMode ? 'Admin' : 'User'} Mode
+                        {adminEnabled ? <User size={14} /> : <Shield size={14} />}
+                        {adminEnabled ? 'Disable Admin Mode' : 'Enable Admin Mode'}
                     </button>
                 )}
 
                 <div className="text-center py-6">
                     <p className="text-xs text-helm-600">Dashboarrd Mobile v{APP_VERSION}</p>
-                    <p className="text-[10px] text-helm-700 mt-1">{isUserMode ? 'User Mode' : 'Admin Mode'}</p>
+                    {adminEnabled && <p className="text-[10px] text-orange-400 mt-1">Admin Mode Enabled</p>}
                 </div>
             </div>
         </div>
