@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Save, Server, CheckCircle, XCircle, Eye, EyeOff, ShieldAlert, Trash2, Database, Tv, DownloadCloud, Github, ExternalLink } from 'lucide-react';
+import { Save, Server, CheckCircle, XCircle, Eye, EyeOff, ShieldAlert, Trash2, Database, Tv, DownloadCloud, Github, ExternalLink, Shield, User } from 'lucide-react';
 import { api } from '../services/api';
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
@@ -15,7 +15,12 @@ interface ServiceConfig {
     enabled: boolean;
 }
 
-const Settings: React.FC = () => {
+interface SettingsProps {
+    onModeSwitch?: () => void;
+    isUserMode?: boolean;
+}
+
+const Settings: React.FC<SettingsProps> = ({ onModeSwitch, isUserMode = false }) => {
     const [config, setConfig] = useState<AppConfig>({
         onboarded: true,
         radarr: { url: '', apiKey: '', enabled: false },
@@ -32,26 +37,30 @@ const Settings: React.FC = () => {
         if (saved) setConfig(JSON.parse(saved));
     }, []);
 
-    const handleSave = async (service: keyof Omit<AppConfig, 'onboarded'>, type: 'arr' | 'sabnzbd' | 'jellyfin' | 'jellyseerr' = 'arr') => {
+    const testAndSave = async (service: 'radarr' | 'sonarr' | 'jellyseerr' | 'sabnzbd' | 'jellyfin') => {
+        const serviceConfig = config[service];
+        if (!serviceConfig.url) return;
+
+        if (Capacitor.isNativePlatform()) await Haptics.impact({ style: ImpactStyle.Medium });
         setTestStatus(prev => ({ ...prev, [service]: 'testing' }));
 
-        const isConnected = await api.testConnection(config[service].url, config[service].apiKey, type);
+        const typeMap = { radarr: 'arr', sonarr: 'arr', jellyseerr: 'jellyseerr', sabnzbd: 'sabnzbd', jellyfin: 'jellyfin' } as const;
+        const success = await api.testConnection(serviceConfig.url, serviceConfig.apiKey, typeMap[service]);
 
-        if (isConnected) {
-            setTestStatus(prev => ({ ...prev, [service]: 'success' }));
-            const newConfig = { ...config, [service]: { ...config[service], enabled: true } };
-            setConfig(newConfig);
-            localStorage.setItem('dashboarrd_config', JSON.stringify(newConfig));
-            await Haptics.impact({ style: ImpactStyle.Medium });
-        } else {
-            setTestStatus(prev => ({ ...prev, [service]: 'error' }));
-        }
+        const updatedConfig = {
+            ...config,
+            [service]: { ...serviceConfig, enabled: success }
+        };
+        setConfig(updatedConfig);
+        localStorage.setItem('dashboarrd_config', JSON.stringify(updatedConfig));
+        setTestStatus(prev => ({ ...prev, [service]: success ? 'success' : 'error' }));
     };
 
-    const updateConfig = (service: keyof Omit<AppConfig, 'onboarded'>, field: keyof ServiceConfig, value: string) => {
+    const updateServiceField = (service: 'radarr' | 'sonarr' | 'jellyseerr' | 'sabnzbd' | 'jellyfin', field: 'url' | 'apiKey', value: string) => {
+        const serviceConfig = config[service];
         setConfig(prev => ({
             ...prev,
-            [service]: { ...prev[service], [field]: value }
+            [service]: { ...serviceConfig, [field]: value }
         }));
         if (testStatus[service] !== 'idle') {
             setTestStatus(prev => ({ ...prev, [service]: 'idle' }));
@@ -71,71 +80,63 @@ const Settings: React.FC = () => {
         window.location.reload();
     };
 
-    const renderServiceCard = (key: keyof Omit<AppConfig, 'onboarded'>, title: string, placeholder: string, type: 'arr' | 'sabnzbd' | 'jellyfin' | 'jellyseerr', icon: React.ReactNode) => (
-        <div className="bg-helm-800 rounded-xl border border-helm-700 p-4 space-y-4 animate-in slide-in-from-bottom duration-500">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <div className="text-helm-accent">{icon}</div>
-                    <h3 className="font-semibold text-white">{title}</h3>
+    const renderServiceCard = (key: 'radarr' | 'sonarr' | 'jellyseerr' | 'sabnzbd' | 'jellyfin', title: string, placeholder: string, type: 'arr' | 'sabnzbd' | 'jellyfin' | 'jellyseerr', icon: React.ReactNode) => {
+        const serviceConfig = config[key];
+        return (
+            <div key={key} className="bg-helm-800 rounded-xl border border-helm-700 p-4 space-y-4 animate-in slide-in-from-bottom duration-500">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className="text-helm-accent">{icon}</div>
+                        <h3 className="font-semibold text-white">{title}</h3>
+                    </div>
+                    {testStatus[key] === 'success' && (
+                        <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-medium px-2 py-1 bg-emerald-500/10 rounded-full">
+                            <CheckCircle size={12} /> Connected
+                        </div>
+                    )}
+                    {testStatus[key] === 'error' && (
+                        <div className="flex items-center gap-1.5 text-red-400 text-xs font-medium px-2 py-1 bg-red-500/10 rounded-full">
+                            <XCircle size={12} /> Failed
+                        </div>
+                    )}
                 </div>
-                {testStatus[key] === 'success' && (
-                    <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-medium px-2 py-1 bg-emerald-500/10 rounded-full">
-                        <CheckCircle size={12} /> Connected
-                    </div>
-                )}
-                {testStatus[key] === 'error' && (
-                    <div className="flex items-center gap-1.5 text-red-400 text-xs font-medium px-2 py-1 bg-red-500/10 rounded-full">
-                        <XCircle size={12} /> Failed
-                    </div>
-                )}
-                {testStatus[key] === 'testing' && (
-                    <div className="flex items-center gap-1.5 text-helm-400 text-xs font-medium px-2 py-1 bg-helm-700/50 rounded-full">
-                        <div className="w-2 h-2 rounded-full bg-helm-400 animate-bounce" /> Testing...
-                    </div>
-                )}
-            </div>
-
-            <div className="space-y-3">
-                <div>
-                    <label className="text-[10px] text-helm-400 uppercase font-bold tracking-wider mb-1.5 block ml-1">Server URL</label>
+                <input
+                    type="text"
+                    value={serviceConfig.url}
+                    onChange={e => updateServiceField(key, 'url', e.target.value)}
+                    placeholder={placeholder}
+                    className="w-full bg-helm-900 border border-helm-700 rounded-lg p-3 text-sm text-white placeholder-helm-500 focus:border-helm-accent outline-none"
+                />
+                <div className="relative">
                     <input
-                        type="text"
-                        placeholder={placeholder}
-                        value={config[key].url}
-                        onChange={(e) => updateConfig(key, 'url', e.target.value)}
-                        className="w-full bg-helm-900 border border-helm-700 rounded-lg p-3 text-sm text-white focus:border-helm-accent outline-none placeholder-helm-600 transition-colors"
+                        type={showKeys[key] ? 'text' : 'password'}
+                        value={serviceConfig.apiKey}
+                        onChange={e => updateServiceField(key, 'apiKey', e.target.value)}
+                        placeholder="API Key"
+                        className="w-full bg-helm-900 border border-helm-700 rounded-lg p-3 pr-10 text-sm text-white placeholder-helm-500 focus:border-helm-accent outline-none font-mono"
                     />
+                    <button
+                        type="button"
+                        onClick={() => setShowKeys(prev => ({ ...prev, [key]: !prev[key] }))}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-helm-500 hover:text-white"
+                    >
+                        {showKeys[key] ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                 </div>
-                <div>
-                    <label className="text-[10px] text-helm-400 uppercase font-bold tracking-wider mb-1.5 block ml-1">API Key</label>
-                    <div className="relative">
-                        <input
-                            type={showKeys[key] ? "text" : "password"}
-                            value={config[key].apiKey}
-                            onChange={(e) => updateConfig(key, 'apiKey', e.target.value)}
-                            placeholder="See Settings > General or API Key"
-                            className="w-full bg-helm-900 border border-helm-700 rounded-lg p-3 text-sm text-white focus:border-helm-accent outline-none pr-10 placeholder-helm-600 transition-colors"
-                        />
-                        <button
-                            onClick={() => setShowKeys(prev => ({ ...prev, [key]: !prev[key] }))}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-helm-500 hover:text-white transition-colors"
-                        >
-                            {showKeys[key] ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                    </div>
-                </div>
+                <button
+                    onClick={() => testAndSave(key)}
+                    disabled={testStatus[key] === 'testing'}
+                    className={`w-full p-3 rounded-lg flex items-center justify-center gap-2 font-bold text-sm transition-colors disabled:opacity-50 ${testStatus[key] === 'success' ? 'bg-emerald-600 text-white' :
+                            testStatus[key] === 'error' ? 'bg-red-600 text-white' :
+                                'bg-helm-accent text-white'
+                        }`}
+                >
+                    <Save size={16} />
+                    {testStatus[key] === 'success' ? 'Saved' : 'Test & Save Connection'}
+                </button>
             </div>
-
-            <button
-                onClick={() => handleSave(key, type)}
-                disabled={testStatus[key] === 'testing' || !config[key].url || !config[key].apiKey}
-                className="w-full py-2.5 bg-helm-700 hover:bg-helm-600 disabled:opacity-50 disabled:cursor-not-allowed active:bg-helm-accent rounded-lg text-sm font-medium text-white transition-all flex items-center justify-center gap-2 mt-2"
-            >
-                <Save size={16} />
-                {testStatus[key] === 'success' ? 'Saved' : 'Test & Save Connection'}
-            </button>
-        </div>
-    );
+        );
+    };
 
     return (
         <div className="h-full flex flex-col bg-helm-900">
@@ -151,25 +152,21 @@ const Settings: React.FC = () => {
                         <div className="space-y-1">
                             <p className="text-xs font-bold text-white uppercase tracking-wider">PWA Mode (Browser)</p>
                             <p className="text-xs text-helm-300 leading-relaxed">
-                                Enable CORS on all your services to allow the web app to connect.
+                                Direct connections may fail due to browser security (CORS). For full functionality, use the Android APK.
                             </p>
                         </div>
                     </div>
                 )}
 
                 {renderServiceCard('radarr', 'Radarr (Movies)', 'http://192.168.1.x:7878', 'arr', <Database size={18} />)}
-                {renderServiceCard('sonarr', 'Sonarr (TV)', 'http://192.168.1.x:8989', 'arr', <Tv size={18} />)}
+                {renderServiceCard('sonarr', 'Sonarr (TV Shows)', 'http://192.168.1.x:8989', 'arr', <Server size={18} />)}
                 {renderServiceCard('jellyseerr', 'Jellyseerr (Requests)', 'http://192.168.1.x:5055', 'jellyseerr', <Server size={18} />)}
                 {renderServiceCard('sabnzbd', 'SABnzbd (Downloads)', 'http://192.168.1.x:8080', 'sabnzbd', <DownloadCloud size={18} />)}
                 {renderServiceCard('jellyfin', 'Jellyfin (Media Server)', 'http://192.168.1.x:8096', 'jellyfin', <Tv size={18} />)}
 
-                {/* App Updates Section */}
                 <AppUpdater />
-
-                {/* Config Sharing Section */}
                 <ConfigSharing onImport={handleImportConfig} />
 
-                {/* Project Info */}
                 <div className="bg-helm-800 rounded-xl border border-helm-700 p-4 space-y-3">
                     <div className="flex items-center gap-2 mb-1">
                         <Github size={18} className="text-white" />
@@ -193,8 +190,19 @@ const Settings: React.FC = () => {
                     <Trash2 size={14} /> Clear All Settings
                 </button>
 
+                {onModeSwitch && (
+                    <button
+                        onClick={onModeSwitch}
+                        className="w-full mt-3 flex items-center justify-center gap-2 p-3 bg-helm-accent/10 border border-helm-accent/20 rounded-xl text-xs font-medium text-helm-accent hover:bg-helm-accent/20 transition-colors"
+                    >
+                        {isUserMode ? <Shield size={14} /> : <User size={14} />}
+                        Switch to {isUserMode ? 'Admin' : 'User'} Mode
+                    </button>
+                )}
+
                 <div className="text-center py-6">
                     <p className="text-xs text-helm-600">Dashboarrd Mobile v{APP_VERSION}</p>
+                    <p className="text-[10px] text-helm-700 mt-1">{isUserMode ? 'User Mode' : 'Admin Mode'}</p>
                 </div>
             </div>
         </div>

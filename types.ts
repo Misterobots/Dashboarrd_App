@@ -1,4 +1,6 @@
 
+export type AppMode = 'admin' | 'user';
+
 export enum MediaType {
   MOVIE = 'MOVIE',
   SERIES = 'SERIES',
@@ -12,6 +14,8 @@ export enum Status {
   REQUESTED = 'REQUESTED'
 }
 
+export type MediaSource = 'jellyfin' | 'radarr' | 'sonarr' | 'jellyseerr' | 'tmdb';
+
 export interface MediaItem {
   id: string;
   title: string;
@@ -21,13 +25,24 @@ export interface MediaItem {
   posterUrl: string;
   overview?: string;
   rating?: number;
-  progress?: number; 
+  progress?: number;
   qualityProfile?: string;
   path?: string;
   size?: string;
   studio?: string;
   // Jellyseerr specific
   jellyseerrId?: number;
+}
+
+// Extended media item for universal search
+export interface UniversalMediaItem extends MediaItem {
+  source: MediaSource;
+  jellyfinId?: string;
+  tmdbId?: number;
+  tvdbId?: number;
+  isInLibrary: boolean;
+  isRequested: boolean;
+  streamingServices?: string[];  // e.g., ['Netflix', 'Disney+']
 }
 
 export interface QueueItem {
@@ -42,6 +57,7 @@ export interface QueueItem {
 
 export interface AppConfig {
   onboarded: boolean;
+  appMode?: AppMode;  // 'admin' or 'user'
   radarr: { url: string; apiKey: string; enabled: boolean };
   sonarr: { url: string; apiKey: string; enabled: boolean };
   jellyseerr: { url: string; apiKey: string; enabled: boolean };

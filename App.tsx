@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Film, Compass, Settings as SettingsIcon, Loader2, Rocket, ArrowRight, CheckCircle2, Gauge } from 'lucide-react';
+import { LayoutDashboard, Film, Compass, Settings as SettingsIcon, Loader2, Rocket, ArrowRight, CheckCircle2, Gauge, Shield, User } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import MediaCard from './components/MediaCard';
 import Discovery from './components/Discovery';
@@ -7,25 +7,41 @@ import ActivityQueue from './components/ActivityQueue';
 import Performance from './components/Performance';
 import MediaDetails from './components/MediaDetails';
 import Settings from './components/Settings';
+import UserApp from './components/UserApp';
 import { api } from './services/api';
-import { MediaType, MediaItem } from './types';
+import { MediaType, MediaItem, AppMode } from './types';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { Capacitor } from '@capacitor/core';
 
 type Tab = 'dashboard' | 'library' | 'discovery' | 'performance' | 'settings';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
-  const [libraryFilter, setLibraryFilter] = useState<'ALL' | 'MOVIE' | 'SERIES'>('ALL');
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
-  const [onboarded, setOnboarded] = useState<boolean>(true);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
-  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  const [libraryFilter, setLibraryFilter] = useState<'ALL' | 'MOVIE' | 'SERIES'>('ALL');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // Mode state
+  const [appMode, setAppMode] = useState<AppMode | null>(null);
+  const [showModeSelection, setShowModeSelection] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('dashboarrd_config');
-    if (!saved) {
-      setOnboarded(false);
+    const config = localStorage.getItem('dashboarrd_config');
+    if (config) {
+      const parsed = JSON.parse(config);
+      if (parsed.appMode) {
+        setAppMode(parsed.appMode);
+      } else if (!parsed.onboarded) {
+        setShowOnboarding(true);
+      } else {
+        // Existing user without mode - show selection
+        setShowModeSelection(true);
+      }
+    } else {
+      setShowOnboarding(true);
     }
   }, []);
 
@@ -34,41 +50,147 @@ function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleTabChange = (tab: Tab) => {
-    Haptics.impact({ style: ImpactStyle.Light });
+  const handleTabChange = async (tab: Tab) => {
+    if (Capacitor.isNativePlatform()) {
+      await Haptics.impact({ style: ImpactStyle.Light });
+    }
     setActiveTab(tab);
-    setSelectedMedia(null);
+  };
+
+  const handleModeSelect = async (mode: AppMode) => {
+    if (Capacitor.isNativePlatform()) {
+      await Haptics.impact({ style: ImpactStyle.Heavy });
+    }
+
+    // Save mode to config
+    const saved = localStorage.getItem('dashboarrd_config');
+    const config = saved ? JSON.parse(saved) : { onboarded: true };
+    config.appMode = mode;
+    localStorage.setItem('dashboarrd_config', JSON.stringify(config));
+
+    setAppMode(mode);
+    setShowModeSelection(false);
+    setShowOnboarding(false);
+  };
+
+  const handleModeSwitch = () => {
+    setShowModeSelection(true);
   };
 
   const completeOnboarding = () => {
-    setOnboarded(true);
-    setActiveTab('settings');
-    showToast("Setup started. Enter your server details.");
+    const saved = localStorage.getItem('dashboarrd_config');
+    const config = saved ? JSON.parse(saved) : {};
+    config.onboarded = true;
+    localStorage.setItem('dashboarrd_config', JSON.stringify(config));
+    setShowOnboarding(false);
+    setShowModeSelection(true);
+  };
+
+  const fetchLibrary = async () => {
+    setIsLoadingLibrary(true);
+    const saved = localStorage.getItem('dashboarrd_config');
+    if (saved) {
+      const config = JSON.parse(saved);
+      try {
+        const [movies, series] = await Promise.all([
+          api.getMovies(config.radarr),
+          api.getSeries(config.sonarr)
+        ]);
+        setMediaItems([...movies, ...series]);
+      } catch (e) { console.error(e); }
+    }
+    setIsLoadingLibrary(false);
   };
 
   useEffect(() => {
-    if (activeTab === 'library' && onboarded) {
-      const fetchLibrary = async () => {
-        setIsLoadingLibrary(true);
-        const saved = localStorage.getItem('dashboarrd_config');
-        if (saved) {
-          const config = JSON.parse(saved);
-          try {
-            const [movies, series] = await Promise.all([
-              api.getMovies(config.radarr),
-              api.getSeries(config.sonarr)
-            ]);
-            setMediaItems([...movies, ...series].sort((a, b) => a.title.localeCompare(b.title)));
-          } catch (e) {
-            showToast("Library sync failed", "error");
-          }
-        }
-        setIsLoadingLibrary(false);
-      };
+    if (activeTab === 'library' && appMode === 'admin') {
       fetchLibrary();
     }
-  }, [activeTab, onboarded]);
+  }, [activeTab, appMode]);
 
+  // Mode Selection Screen
+  if (showModeSelection) {
+    return (
+      <div className="flex flex-col min-h-screen bg-helm-900 items-center justify-center p-6">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-white mb-2">Choose Your Mode</h1>
+          <p className="text-helm-400">Select how you want to use Dashboarrd</p>
+        </div>
+
+        <div className="w-full max-w-sm space-y-4">
+          {/* Admin Mode */}
+          <button
+            onClick={() => handleModeSelect('admin')}
+            className="w-full bg-helm-800 border-2 border-helm-700 hover:border-helm-accent rounded-2xl p-5 text-left transition-all active:scale-[0.98]"
+          >
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-helm-accent/20 rounded-xl">
+                <Shield size={28} className="text-helm-accent" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white">Admin Mode</h3>
+                <p className="text-sm text-helm-400 mt-1">
+                  Full access to all services, settings, performance metrics, and management tools.
+                </p>
+                <p className="text-xs text-helm-500 mt-2">
+                  • Dashboard • Library • Discovery • Performance • Settings
+                </p>
+              </div>
+            </div>
+          </button>
+
+          {/* User Mode */}
+          <button
+            onClick={() => handleModeSelect('user')}
+            className="w-full bg-helm-800 border-2 border-helm-700 hover:border-purple-500 rounded-2xl p-5 text-left transition-all active:scale-[0.98]"
+          >
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-purple-500/20 rounded-xl">
+                <User size={28} className="text-purple-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white">User Mode</h3>
+                <p className="text-sm text-helm-400 mt-1">
+                  Simplified interface for browsing, searching, and requesting content.
+                </p>
+                <p className="text-xs text-helm-500 mt-2">
+                  • Search • Request • Play • Track Requests
+                </p>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        <p className="text-xs text-helm-600 mt-8">
+          You can change this later in Settings
+        </p>
+      </div>
+    );
+  }
+
+  // Onboarding
+  if (showOnboarding) {
+    return (
+      <div className="flex flex-col min-h-screen bg-helm-900 items-center justify-center p-6 text-center">
+        <Rocket size={64} className="text-helm-accent mb-6" />
+        <h1 className="text-3xl font-bold text-white">Welcome to Dashboarrd</h1>
+        <p className="text-helm-400 mt-2 max-w-xs">Your unified media server companion app</p>
+        <button
+          onClick={completeOnboarding}
+          className="mt-10 bg-helm-accent text-white font-bold py-3 px-8 rounded-full flex items-center gap-2 active:scale-95 transition-transform"
+        >
+          Get Started <ArrowRight size={20} />
+        </button>
+      </div>
+    );
+  }
+
+  // User Mode - render UserApp
+  if (appMode === 'user') {
+    return <UserApp onModeSwitch={handleModeSwitch} />;
+  }
+
+  // Admin Mode - original app
   const renderContent = () => {
     if (selectedMedia) {
       return <MediaDetails item={selectedMedia} onBack={() => setSelectedMedia(null)} />;
@@ -115,67 +237,41 @@ function App() {
         );
       case 'discovery': return <Discovery />;
       case 'performance': return <Performance />;
-      case 'settings': return <Settings />;
+      case 'settings': return <Settings onModeSwitch={handleModeSwitch} isUserMode={false} />;
       default: return <Dashboard />;
     }
   };
 
-  if (!onboarded) {
-    return (
-      <div className="h-screen w-full bg-helm-900 flex flex-col items-center justify-center p-8 text-center space-y-8 animate-in fade-in duration-700 pb-safe pt-safe">
-        <div className="w-24 h-24 bg-helm-accent rounded-3xl flex items-center justify-center shadow-2xl shadow-helm-accent/20 rotate-12">
-          <Rocket size={48} className="text-white -rotate-12" />
-        </div>
-        <div className="space-y-3">
-          <h1 className="text-4xl font-black text-white tracking-tight">Dashboarrd</h1>
-          <p className="text-helm-400 max-w-xs mx-auto text-lg leading-relaxed">
-            Your personal navigator for Radarr and Sonarr.
-          </p>
-        </div>
-        <div className="space-y-4 w-full max-w-xs">
-          <div className="flex items-center gap-3 text-left bg-helm-800/50 p-4 rounded-2xl border border-helm-700/50">
-            <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
-            <p className="text-sm text-helm-300">Direct local connection</p>
-          </div>
-          <div className="flex items-center gap-3 text-left bg-helm-800/50 p-4 rounded-2xl border border-helm-700/50">
-            <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
-            <p className="text-sm text-helm-300">Discover & Request media</p>
-          </div>
-        </div>
-        <button
-          onClick={completeOnboarding}
-          className="w-full max-w-xs py-4 bg-helm-accent hover:bg-indigo-500 text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
-        >
-          Get Started <ArrowRight size={20} />
-        </button>
-      </div>
-    );
-  }
+  const NavButton: React.FC<{ active: boolean, onClick: () => void, icon: React.ReactNode, label: string }> = ({ active, onClick, icon, label }) => (
+    <button onClick={onClick} className={`flex flex-col items-center justify-center w-16 gap-1 transition-colors pb-2 ${active ? 'text-white' : 'text-helm-500'}`}>
+      <div className={`p-1 rounded-lg transition-colors ${active ? 'bg-helm-accent/20' : ''}`}>{icon}</div>
+      <span className={`text-[10px] font-bold uppercase tracking-wider ${active ? 'opacity-100' : 'opacity-50'}`}>{label}</span>
+    </button>
+  );
 
   return (
     <div className="flex flex-col h-full w-full bg-helm-900 overflow-hidden relative">
-      <main className="flex-1 overflow-hidden">
-        {renderContent()}
-      </main>
-
-      {/* Toast Notification */}
       {toast && (
-        <div className={`fixed top-12 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-2xl z-[100] flex items-center gap-2 animate-in slide-in-from-top duration-300 font-medium text-sm ${toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
-          {toast.type === 'success' ? <CheckCircle2 size={16} /> : null}
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-full text-sm font-medium flex items-center gap-2 shadow-xl transition-opacity ${toast.type === 'success' ? 'bg-emerald-500/90' : 'bg-red-500/90'} text-white animate-in fade-in slide-in-from-top-2 duration-300`}>
+          <CheckCircle2 size={18} />
           {toast.message}
         </div>
       )}
 
+      <main className="flex-1 overflow-hidden">{renderContent()}</main>
+
       {!selectedMedia && (
         <div className="fixed bottom-0 left-0 right-0 bg-helm-900/90 backdrop-blur-xl border-t border-helm-700/50 flex items-center justify-around z-50 px-2 pb-safe h-[calc(5rem+env(safe-area-inset-bottom))]">
-          <NavButton active={activeTab === 'dashboard'} onClick={() => handleTabChange('dashboard')} icon={<LayoutDashboard size={24} />} label="Dashboard" />
+          <NavButton active={activeTab === 'dashboard'} onClick={() => handleTabChange('dashboard')} icon={<LayoutDashboard size={24} />} label="Home" />
           <NavButton active={activeTab === 'library'} onClick={() => handleTabChange('library')} icon={<Film size={24} />} label="Library" />
-          <div className="relative -top-6">
+          <div className="relative">
             <button
               onClick={() => handleTabChange('discovery')}
-              className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl transition-all hover:scale-105 active:scale-90 ${activeTab === 'discovery' ? 'bg-white text-helm-accent rotate-12' : 'bg-helm-accent text-white shadow-helm-accent/30'}`}
+              className={`flex flex-col items-center justify-center gap-1 transition-all pb-2 group -translate-y-2 ${activeTab === 'discovery' ? 'text-white' : 'text-helm-500'}`}
             >
-              <Compass size={28} />
+              <div className={`p-4 rounded-2xl shadow-xl transition-all transform group-active:scale-90 ${activeTab === 'discovery' ? 'bg-helm-accent scale-110' : 'bg-helm-800 border border-helm-700'}`}>
+                <Compass size={28} />
+              </div>
             </button>
           </div>
           <NavButton active={activeTab === 'performance'} onClick={() => handleTabChange('performance')} icon={<Gauge size={24} />} label="Stats" />
@@ -185,12 +281,5 @@ function App() {
     </div>
   );
 }
-
-const NavButton: React.FC<{ active: boolean, onClick: () => void, icon: React.ReactNode, label: string }> = ({ active, onClick, icon, label }) => (
-  <button onClick={onClick} className={`flex flex-col items-center justify-center w-16 gap-1 transition-colors pb-2 ${active ? 'text-white' : 'text-helm-500'}`}>
-    <div className={`p-1 rounded-lg transition-colors ${active ? 'bg-helm-accent/20' : ''}`}>{icon}</div>
-    <span className={`text-[10px] font-bold uppercase tracking-wider ${active ? 'opacity-100' : 'opacity-50'}`}>{label}</span>
-  </button>
-);
 
 export default App;
