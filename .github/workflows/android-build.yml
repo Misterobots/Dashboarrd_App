@@ -18,6 +18,13 @@ jobs:
         with:
           node-version: 20
 
+      - name: Get Version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
       - name: Install Dependencies
         run: |
           npm install
@@ -51,9 +58,55 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Rename APK with Version
+        run: |
+          mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/dashboarrd-v${{ steps.version.outputs.version }}.apk
+
+      - name: Upload APK as Artifact (Backup)
         uses: actions/upload-artifact@v4
         with:
           name: dashboarrd-mobile-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/debug/dashboarrd-v${{ steps.version.outputs.version }}.apk
           retention-days: 7
+
+      - name: Check if Release Exists
+        id: check_release
+        run: |
+          RELEASE_EXISTS=$(gh release view "v${{ steps.version.outputs.version }}" --json tagName 2>/dev/null || echo "not_found")
+          if [ "$RELEASE_EXISTS" = "not_found" ]; then
+            echo "exists=false" >> $GITHUB_OUTPUT
+          else
+            echo "exists=true" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create or Update GitHub Release
+        if: steps.check_release.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Dashboarrd v${{ steps.version.outputs.version }}
+          body: |
+            ## Dashboarrd Mobile v${{ steps.version.outputs.version }}
+            
+            ### Installation
+            1. Download the APK file below
+            2. Enable "Install from unknown sources" if prompted
+            3. Install and enjoy!
+            
+            Built automatically from commit ${{ github.sha }}
+          files: android/app/build/outputs/apk/debug/dashboarrd-v${{ steps.version.outputs.version }}.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Existing Release
+        if: steps.check_release.outputs.exists == 'true'
+        run: |
+          gh release upload "v${{ steps.version.outputs.version }}" \
+            android/app/build/outputs/apk/debug/dashboarrd-v${{ steps.version.outputs.version }}.apk \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
