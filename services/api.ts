@@ -54,12 +54,30 @@ const makeRequest = async (url: string, options: RequestInit = {}, timeout = 120
   }
 };
 
-const getImageUrl = (baseUrl: string, apiKey: string, images: any[], id: string) => {
-  if (!images || !Array.isArray(images)) return `https://picsum.photos/300/450?random=${id}`;
-  const poster = images.find((i: any) => i.coverType.toLowerCase() === 'poster');
-  if (!poster) return `https://picsum.photos/300/450?random=${id}`;
-  if (poster.url) return `${baseUrl}${poster.url}?apikey=${apiKey}`;
-  return poster.remoteUrl;
+const getImageUrl = (baseUrl: string, apiKey: string, images: any[], id: string, tmdbId?: number, mediaType?: 'movie' | 'tv') => {
+  // First, try to get poster from images array
+  if (images && Array.isArray(images) && images.length > 0) {
+    const poster = images.find((i: any) => i.coverType?.toLowerCase() === 'poster');
+
+    if (poster) {
+      // Prefer remoteUrl (TMDB) as it's most reliable
+      if (poster.remoteUrl) {
+        return poster.remoteUrl;
+      }
+      // Fall back to local URL with API key
+      if (poster.url) {
+        return `${baseUrl}${poster.url}?apikey=${apiKey}`;
+      }
+    }
+  }
+
+  // If we have TMDB ID, construct the URL directly
+  if (tmdbId && mediaType) {
+    return `https://image.tmdb.org/t/p/w500/${tmdbId}`;
+  }
+
+  // Fallback placeholder
+  return `https://placehold.co/300x450/1e293b/64748b?text=${encodeURIComponent('No Poster')}`;
 };
 
 export const api = {
@@ -383,7 +401,7 @@ export const api = {
         year: m.year,
         type: MediaType.MOVIE,
         status: m.hasFile ? Status.AVAILABLE : (m.monitored ? Status.MISSING : Status.REQUESTED),
-        posterUrl: getImageUrl(baseUrl, config.apiKey, m.images, m.id),
+        posterUrl: getImageUrl(baseUrl, config.apiKey, m.images, m.id, m.tmdbId, 'movie'),
         overview: m.overview,
         rating: m.ratings?.value,
         path: m.path,
@@ -410,7 +428,7 @@ export const api = {
         year: s.year,
         type: MediaType.SERIES,
         status: s.statistics?.percentOfEpisodes === 100 ? Status.AVAILABLE : Status.MISSING,
-        posterUrl: getImageUrl(baseUrl, config.apiKey, s.images, s.id),
+        posterUrl: getImageUrl(baseUrl, config.apiKey, s.images, s.id, s.tvdbId, 'tv'),
         overview: s.overview,
         rating: s.ratings?.value,
         path: s.path,

@@ -144,6 +144,7 @@ const Dashboard: React.FC = () => {
             type="jellyfin"
             connected={config.jellyfin.enabled}
             data={serviceData.jellyfin}
+            url={config.jellyfin.url}
           />
         )}
 
@@ -153,6 +154,7 @@ const Dashboard: React.FC = () => {
             type="sabnzbd"
             connected={config.sabnzbd.enabled}
             data={serviceData.sabnzbd}
+            url={config.sabnzbd.url}
           />
         )}
 
@@ -162,6 +164,7 @@ const Dashboard: React.FC = () => {
             type="radarr"
             connected={config.radarr.enabled}
             data={serviceData.radarr}
+            url={config.radarr.url}
           />
         )}
 
@@ -171,6 +174,7 @@ const Dashboard: React.FC = () => {
             type="sonarr"
             connected={config.sonarr.enabled}
             data={serviceData.sonarr}
+            url={config.sonarr.url}
           />
         )}
 
@@ -180,6 +184,7 @@ const Dashboard: React.FC = () => {
             type="jellyseerr"
             connected={config.jellyseerr.enabled}
             data={serviceData.jellyseerr}
+            url={config.jellyseerr.url}
           />
         )}
 
