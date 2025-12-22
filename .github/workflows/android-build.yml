@@ -1,10 +1,22 @@
 name: Build Android APK (Dashboarrd)
+
 permissions:
   contents: write
+
 on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 jobs:
   build:
@@ -13,18 +25,69 @@ jobs:
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Get Version from package.json
-        id: version
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get Current Version
+        id: current_version
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Building version: $VERSION"
+          echo "Current version: $VERSION"
+
+      - name: Bump Version
+        id: version
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          
+          # Determine bump type (default to patch for push events)
+          BUMP_TYPE="${{ github.event.inputs.version_bump || 'patch' }}"
+          
+          # Parse version components
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          
+          # Bump version based on type
+          case $BUMP_TYPE in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Bumping from $CURRENT to $NEW_VERSION ($BUMP_TYPE)"
+          
+          # Update package.json
+          npm version $NEW_VERSION --no-git-tag-version
+          
+          # Update APP_VERSION in updateService.ts
+          sed -i "s/export const APP_VERSION = '[^']*'/export const APP_VERSION = '$NEW_VERSION'/" services/updateService.ts
+
+      - name: Commit Version Bump
+        run: |
+          git add package.json services/updateService.ts
+          git commit -m "chore: bump version to v${{ steps.version.outputs.new_version }} [skip ci]" || echo "No changes to commit"
+          git push origin HEAD:${{ github.ref_name }}
 
       - name: Install Dependencies
         run: |
@@ -61,53 +124,35 @@ jobs:
 
       - name: Rename APK with Version
         run: |
-          mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/dashboarrd-v${{ steps.version.outputs.version }}.apk
+          mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/dashboarrd-v${{ steps.version.outputs.new_version }}.apk
 
       - name: Upload APK as Artifact (Backup)
         uses: actions/upload-artifact@v4
         with:
-          name: dashboarrd-mobile-debug
-          path: android/app/build/outputs/apk/debug/dashboarrd-v${{ steps.version.outputs.version }}.apk
-          retention-days: 7
+          name: dashboarrd-mobile-v${{ steps.version.outputs.new_version }}
+          path: android/app/build/outputs/apk/debug/dashboarrd-v${{ steps.version.outputs.new_version }}.apk
+          retention-days: 30
 
-      - name: Check if Release Exists
-        id: check_release
-        run: |
-          RELEASE_EXISTS=$(gh release view "v${{ steps.version.outputs.version }}" --json tagName 2>/dev/null || echo "not_found")
-          if [ "$RELEASE_EXISTS" = "not_found" ]; then
-            echo "exists=false" >> $GITHUB_OUTPUT
-          else
-            echo "exists=true" >> $GITHUB_OUTPUT
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create or Update GitHub Release
-        if: steps.check_release.outputs.exists == 'false'
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: Dashboarrd v${{ steps.version.outputs.version }}
+          tag_name: v${{ steps.version.outputs.new_version }}
+          name: Dashboarrd v${{ steps.version.outputs.new_version }}
           body: |
-            ## Dashboarrd Mobile v${{ steps.version.outputs.version }}
+            ## Dashboarrd Mobile v${{ steps.version.outputs.new_version }}
+            
+            ### What's New
+            - Auto-built from commit ${{ github.sha }}
             
             ### Installation
             1. Download the APK file below
             2. Enable "Install from unknown sources" if prompted
             3. Install and enjoy!
             
-            Built automatically from commit ${{ github.sha }}
-          files: android/app/build/outputs/apk/debug/dashboarrd-v${{ steps.version.outputs.version }}.apk
+            ---
+            *Previous version: v${{ steps.current_version.outputs.version }}*
+          files: android/app/build/outputs/apk/debug/dashboarrd-v${{ steps.version.outputs.new_version }}.apk
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update Existing Release
-        if: steps.check_release.outputs.exists == 'true'
-        run: |
-          gh release upload "v${{ steps.version.outputs.version }}" \
-            android/app/build/outputs/apk/debug/dashboarrd-v${{ steps.version.outputs.version }}.apk \
-            --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
