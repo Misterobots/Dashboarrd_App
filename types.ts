@@ -58,6 +58,7 @@ export interface QueueItem {
 export interface AppConfig {
   onboarded: boolean;
   appMode?: AppMode;  // 'admin' or 'user'
+  autheliaUrl?: string;  // SSO server URL
   radarr: { url: string; apiKey: string; enabled: boolean };
   sonarr: { url: string; apiKey: string; enabled: boolean };
   jellyseerr: { url: string; apiKey: string; enabled: boolean };
