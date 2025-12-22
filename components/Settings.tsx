@@ -6,6 +6,7 @@ import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { AppConfig } from '../types';
 import AppUpdater from './AppUpdater';
+import ConfigSharing from './ConfigSharing';
 import { APP_VERSION } from '../services/updateService';
 
 interface ServiceConfig {
@@ -62,6 +63,12 @@ const Settings: React.FC = () => {
             localStorage.removeItem('dashboarrd_config');
             window.location.reload();
         }
+    };
+
+    const handleImportConfig = (importedConfig: AppConfig) => {
+        setConfig(importedConfig);
+        localStorage.setItem('dashboarrd_config', JSON.stringify(importedConfig));
+        window.location.reload();
     };
 
     const renderServiceCard = (key: keyof Omit<AppConfig, 'onboarded'>, title: string, placeholder: string, type: 'arr' | 'sabnzbd' | 'jellyfin' | 'jellyseerr', icon: React.ReactNode) => (
@@ -158,6 +165,9 @@ const Settings: React.FC = () => {
 
                 {/* App Updates Section */}
                 <AppUpdater />
+
+                {/* Config Sharing Section */}
+                <ConfigSharing onImport={handleImportConfig} />
 
                 {/* Project Info */}
                 <div className="bg-helm-800 rounded-xl border border-helm-700 p-4 space-y-3">
