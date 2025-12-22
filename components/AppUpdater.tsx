@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { RefreshCw, Download, CheckCircle, AlertCircle, Smartphone, ExternalLink } from 'lucide-react';
+import React, { useState } from 'react';
+import { RefreshCw, Download, CheckCircle, AlertCircle, Smartphone, ExternalLink, Shield } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import {
@@ -8,15 +8,19 @@ import {
     formatBytes,
     formatRelativeDate,
     APP_VERSION,
-    UpdateCheckResult
+    UpdateCheckResult,
+    DownloadProgress,
+    hasInstallPermission,
+    requestInstallPermission
 } from '../services/updateService';
 
-type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'upToDate' | 'error';
+type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'permission_needed' | 'upToDate' | 'error';
 
 const AppUpdater: React.FC = () => {
     const [status, setStatus] = useState<UpdateStatus>('idle');
     const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
 
     const handleCheckForUpdates = async () => {
         setStatus('checking');
@@ -48,17 +52,36 @@ const AppUpdater: React.FC = () => {
     const handleDownloadUpdate = async () => {
         if (!updateInfo?.latestRelease?.downloadUrl) return;
 
+        // Check permission first
+        if (Capacitor.isNativePlatform()) {
+            const hasPermission = await hasInstallPermission();
+            if (!hasPermission) {
+                setStatus('permission_needed');
+                return;
+            }
+        }
+
         setStatus('downloading');
+        setDownloadProgress({ percent: 0, downloaded: 0, total: updateInfo.latestRelease.size });
 
         try {
             if (Capacitor.isNativePlatform()) {
                 await Haptics.impact({ style: ImpactStyle.Medium });
             }
 
-            const success = await downloadAndInstallUpdate(updateInfo.latestRelease.downloadUrl);
+            const success = await downloadAndInstallUpdate(
+                updateInfo.latestRelease.downloadUrl,
+                (progress) => {
+                    setDownloadProgress(progress);
+                    if (progress.percent >= 80) {
+                        setStatus('installing');
+                    }
+                }
+            );
 
             if (!success) {
-                setError('Download may have failed. Check your downloads.');
+                setStatus('error');
+                setError('Update may require manual installation. Check your downloads.');
             }
         } catch (err) {
             setStatus('error');
@@ -67,14 +90,30 @@ const AppUpdater: React.FC = () => {
         }
     };
 
+    const handleGrantPermission = async () => {
+        await requestInstallPermission();
+        // User will return after granting permission in settings
+        // Re-check permission after a short delay
+        setTimeout(async () => {
+            const hasPermission = await hasInstallPermission();
+            if (hasPermission) {
+                handleDownloadUpdate();
+            }
+        }, 1000);
+    };
+
     const getStatusIcon = () => {
         switch (status) {
             case 'checking':
+            case 'downloading':
+            case 'installing':
                 return <RefreshCw size={18} className="animate-spin text-helm-accent" />;
             case 'available':
                 return <Download size={18} className="text-emerald-400" />;
             case 'upToDate':
                 return <CheckCircle size={18} className="text-emerald-400" />;
+            case 'permission_needed':
+                return <Shield size={18} className="text-yellow-400" />;
             case 'error':
                 return <AlertCircle size={18} className="text-red-400" />;
             default:
@@ -89,7 +128,13 @@ const AppUpdater: React.FC = () => {
             case 'available':
                 return 'Update available!';
             case 'downloading':
-                return 'Opening download...';
+                return downloadProgress
+                    ? `Downloading... ${downloadProgress.percent}%`
+                    : 'Downloading update...';
+            case 'installing':
+                return 'Installing update...';
+            case 'permission_needed':
+                return 'Permission required';
             case 'upToDate':
                 return 'You\'re up to date';
             case 'error':
@@ -145,6 +190,36 @@ const AppUpdater: React.FC = () => {
 
             <p className="text-sm text-helm-300">{getStatusText()}</p>
 
+            {/* Download Progress Bar */}
+            {(status === 'downloading' || status === 'installing') && downloadProgress && (
+                <div className="space-y-2">
+                    <div className="w-full h-2 bg-helm-900 rounded-full overflow-hidden">
+                        <div
+                            className="h-full bg-helm-accent transition-all duration-300 ease-out"
+                            style={{ width: `${downloadProgress.percent}%` }}
+                        />
+                    </div>
+                    <p className="text-[10px] text-helm-500 text-center">
+                        {status === 'installing' ? 'Installing...' : 'Downloading APK...'}
+                    </p>
+                </div>
+            )}
+
+            {/* Permission Needed */}
+            {status === 'permission_needed' && (
+                <div className="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg">
+                    <p className="text-xs text-yellow-300 mb-2">
+                        To install updates, please allow installing apps from this source.
+                    </p>
+                    <button
+                        onClick={handleGrantPermission}
+                        className="w-full py-2 bg-yellow-600 hover:bg-yellow-500 rounded-lg text-xs font-medium text-white transition-all"
+                    >
+                        Open Settings
+                    </button>
+                </div>
+            )}
+
             {/* Update Available Details */}
             {status === 'available' && updateInfo?.latestRelease && (
                 <div className="bg-helm-900/50 rounded-lg p-3 space-y-2 border border-helm-700/50">
@@ -186,10 +261,10 @@ const AppUpdater: React.FC = () => {
                     <Download size={16} />
                     Download & Install
                 </button>
-            ) : status === 'checking' ? (
+            ) : (status === 'checking' || status === 'downloading' || status === 'installing') ? (
                 <div className="w-full py-2.5 bg-helm-700/50 rounded-lg text-sm font-medium text-helm-400 flex items-center justify-center gap-2">
                     <RefreshCw size={16} className="animate-spin" />
-                    Checking...
+                    {status === 'checking' ? 'Checking...' : status === 'installing' ? 'Installing...' : 'Downloading...'}
                 </div>
             ) : null}
 

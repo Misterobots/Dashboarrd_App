@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { CapacitorHttp } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
 // Current app version - must match package.json
 export const APP_VERSION = '1.1.6';
@@ -22,6 +23,12 @@ export interface UpdateCheckResult {
     updateAvailable: boolean;
     currentVersion: string;
     latestRelease: ReleaseInfo | null;
+}
+
+export interface DownloadProgress {
+    percent: number;
+    downloaded: number;
+    total: number;
 }
 
 /**
@@ -107,33 +114,139 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
 }
 
 /**
- * Download and install APK update
- * Note: This requires the app to have permission to install from unknown sources
+ * Download APK and trigger installation
+ * This downloads to cache and uses Android's package installer
  */
 export async function downloadAndInstallUpdate(
     downloadUrl: string,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: DownloadProgress) => void
 ): Promise<boolean> {
     if (!Capacitor.isNativePlatform()) {
         console.warn('APK installation only available on Android');
+        window.open(downloadUrl, '_blank');
         return false;
     }
 
     try {
-        // For Android, we'll open the APK URL directly in the browser
-        // which will trigger the download and installation flow
-        // This is the simplest approach that works without additional plugins
+        // Dynamic import of the app-install plugin
+        const { AppInstall } = await import('@m430/capacitor-app-install');
 
-        // First try using the Android intent system via a custom URL
-        const intentUrl = `intent://${downloadUrl.replace('https://', '')}#Intent;scheme=https;action=android.intent.action.VIEW;type=application/vnd.android.package-archive;end`;
+        // Check if we have permission to install unknown apps
+        const hasPermission = await AppInstall.hasInstallPermission();
 
-        // Fallback: Open in browser which will download the APK
-        window.open(downloadUrl, '_system');
+        if (!hasPermission.result) {
+            // Request permission - this opens Android settings
+            await AppInstall.openInstallSetting();
+            return false; // User needs to come back after granting permission
+        }
+
+        // Report initial progress
+        onProgress?.({ percent: 0, downloaded: 0, total: 0 });
+
+        // Download the APK using CapacitorHttp
+        // Note: For large files, we may need to use a streaming approach
+        console.log('Downloading APK from:', downloadUrl);
+
+        const response = await CapacitorHttp.get({
+            url: downloadUrl,
+            responseType: 'blob',
+            headers: {
+                'Accept': 'application/vnd.android.package-archive'
+            }
+        });
+
+        if (response.status !== 200) {
+            console.error('Download failed:', response.status);
+            return false;
+        }
+
+        onProgress?.({ percent: 50, downloaded: 0, total: 0 });
+
+        // Save to cache directory
+        const fileName = `dashboarrd-update-${Date.now()}.apk`;
+
+        // Convert response data to base64 if needed
+        let base64Data: string;
+        if (typeof response.data === 'string') {
+            // Already base64
+            base64Data = response.data;
+        } else {
+            // Need to convert - this is a blob
+            const blob = response.data as Blob;
+            base64Data = await blobToBase64(blob);
+        }
+
+        // Write to cache directory
+        const result = await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Cache
+        });
+
+        onProgress?.({ percent: 80, downloaded: 0, total: 0 });
+
+        console.log('APK saved to:', result.uri);
+
+        // Install the APK
+        await AppInstall.installApp({
+            path: result.uri
+        });
+
+        onProgress?.({ percent: 100, downloaded: 0, total: 0 });
 
         return true;
     } catch (error) {
-        console.error('Error downloading update:', error);
+        console.error('Error downloading/installing update:', error);
+
+        // Fallback: open in browser for manual download
+        window.open(downloadUrl, '_system');
         return false;
+    }
+}
+
+/**
+ * Convert Blob to base64 string
+ */
+function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64 = reader.result as string;
+            // Remove the data URL prefix (e.g., "data:application/vnd.android.package-archive;base64,")
+            const base64Data = base64.split(',')[1] || base64;
+            resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+/**
+ * Check if app has permission to install APKs
+ */
+export async function hasInstallPermission(): Promise<boolean> {
+    if (!Capacitor.isNativePlatform()) return false;
+
+    try {
+        const { AppInstall } = await import('@m430/capacitor-app-install');
+        const result = await AppInstall.hasInstallPermission();
+        return result.result;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Open Android settings to grant install permission
+ */
+export async function requestInstallPermission(): Promise<void> {
+    if (!Capacitor.isNativePlatform()) return;
+
+    try {
+        const { AppInstall } = await import('@m430/capacitor-app-install');
+        await AppInstall.openInstallSetting();
+    } catch (error) {
+        console.error('Failed to open install settings:', error);
     }
 }
 
