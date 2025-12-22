@@ -113,6 +113,22 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
     }
 }
 
+// Lazy load the AppInstall plugin
+let appInstallPlugin: any = null;
+
+async function getAppInstallPlugin(): Promise<any> {
+    if (appInstallPlugin) return appInstallPlugin;
+
+    try {
+        const module = await import('@m430/capacitor-app-install');
+        appInstallPlugin = module.default;
+        return appInstallPlugin;
+    } catch (e) {
+        console.error('Failed to load AppInstall plugin:', e);
+        return null;
+    }
+}
+
 /**
  * Download APK and trigger installation
  * This downloads to cache and uses Android's package installer
@@ -128,13 +144,18 @@ export async function downloadAndInstallUpdate(
     }
 
     try {
-        // Dynamic import of the app-install plugin
-        const { AppInstall } = await import('@m430/capacitor-app-install');
+        const AppInstall = await getAppInstallPlugin();
+
+        if (!AppInstall) {
+            // Fallback: open in browser
+            window.open(downloadUrl, '_system');
+            return false;
+        }
 
         // Check if we have permission to install unknown apps
         const hasPermission = await AppInstall.hasInstallPermission();
 
-        if (!hasPermission.result) {
+        if (!hasPermission?.result) {
             // Request permission - this opens Android settings
             await AppInstall.openInstallSetting();
             return false; // User needs to come back after granting permission
@@ -144,7 +165,6 @@ export async function downloadAndInstallUpdate(
         onProgress?.({ percent: 0, downloaded: 0, total: 0 });
 
         // Download the APK using CapacitorHttp
-        // Note: For large files, we may need to use a streaming approach
         console.log('Downloading APK from:', downloadUrl);
 
         const response = await CapacitorHttp.get({
@@ -228,9 +248,11 @@ export async function hasInstallPermission(): Promise<boolean> {
     if (!Capacitor.isNativePlatform()) return false;
 
     try {
-        const { AppInstall } = await import('@m430/capacitor-app-install');
+        const AppInstall = await getAppInstallPlugin();
+        if (!AppInstall) return false;
+
         const result = await AppInstall.hasInstallPermission();
-        return result.result;
+        return result?.result || false;
     } catch {
         return false;
     }
@@ -243,8 +265,10 @@ export async function requestInstallPermission(): Promise<void> {
     if (!Capacitor.isNativePlatform()) return;
 
     try {
-        const { AppInstall } = await import('@m430/capacitor-app-install');
-        await AppInstall.openInstallSetting();
+        const AppInstall = await getAppInstallPlugin();
+        if (AppInstall) {
+            await AppInstall.openInstallSetting();
+        }
     } catch (error) {
         console.error('Failed to open install settings:', error);
     }
