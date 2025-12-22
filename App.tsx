@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Film, Compass, Settings as SettingsIcon, Loader2, Rocket, ArrowRight, CheckCircle2, Gauge, Home, Search, Clock } from 'lucide-react';
+import { LayoutDashboard, Film, Settings as SettingsIcon, Loader2, Rocket, ArrowRight, CheckCircle2, Gauge, Home, Search, Clock, Plus } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import MediaCard from './components/MediaCard';
 import Discovery from './components/Discovery';
@@ -15,7 +15,7 @@ import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { Capacitor } from '@capacitor/core';
 
 // User tabs + Admin tabs when unlocked
-type Tab = 'home' | 'search' | 'requests' | 'dashboard' | 'library' | 'discovery' | 'performance' | 'settings';
+type Tab = 'home' | 'search' | 'requests' | 'dashboard' | 'library' | 'performance' | 'settings';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('home');
@@ -174,7 +174,6 @@ function App() {
             )}
           </div>
         );
-      case 'discovery': return <Discovery />;
       case 'performance': return adminModeEnabled ? <Performance /> : <UserHome />;
       case 'settings': return <Settings onAdminToggle={toggleAdminMode} adminEnabled={adminModeEnabled} />;
       default: return <UserHome />;
@@ -206,31 +205,32 @@ function App() {
 
       {!selectedMedia && (
         <div className="fixed bottom-0 left-0 right-0 bg-helm-900/95 backdrop-blur-xl border-t border-helm-700/50 flex items-center justify-around z-50 px-1 pb-safe h-[calc(5rem+env(safe-area-inset-bottom))]">
-          {/* User tabs - always visible */}
+          {/* Home */}
           <NavButton active={activeTab === 'home'} onClick={() => handleTabChange('home')} icon={<Home size={22} />} label="Home" />
-          <NavButton active={activeTab === 'search'} onClick={() => handleTabChange('search')} icon={<Search size={22} />} label="Search" />
 
-          {/* Discovery - center button */}
+          {/* Requests */}
+          <NavButton active={activeTab === 'requests'} onClick={() => handleTabChange('requests')} icon={<Clock size={22} />} label="Requests" />
+
+          {/* Search - center button (main action) */}
           <div className="relative">
             <button
-              onClick={() => handleTabChange('discovery')}
-              className={`flex flex-col items-center justify-center gap-1 transition-all pb-2 group -translate-y-2 ${activeTab === 'discovery' ? 'text-white' : 'text-helm-500'}`}
+              onClick={() => handleTabChange('search')}
+              className={`flex flex-col items-center justify-center gap-1 transition-all pb-2 group -translate-y-2 ${activeTab === 'search' ? 'text-white' : 'text-helm-500'}`}
             >
-              <div className={`p-3 rounded-2xl shadow-xl transition-all transform group-active:scale-90 ${activeTab === 'discovery' ? 'bg-helm-accent scale-110' : 'bg-helm-800 border border-helm-700'}`}>
-                <Compass size={26} />
+              <div className={`p-3.5 rounded-2xl shadow-xl transition-all transform group-active:scale-90 ${activeTab === 'search' ? 'bg-helm-accent scale-110' : 'bg-helm-800 border border-helm-700'}`}>
+                <Search size={26} />
               </div>
             </button>
           </div>
 
-          <NavButton active={activeTab === 'requests'} onClick={() => handleTabChange('requests')} icon={<Clock size={22} />} label="Requests" />
-
-          {/* Admin tabs - only when enabled */}
-          {adminModeEnabled && (
-            <>
-              <NavButton active={activeTab === 'dashboard'} onClick={() => handleTabChange('dashboard')} icon={<LayoutDashboard size={20} />} label="Admin" isAdmin />
-            </>
+          {/* Admin tab - only when enabled */}
+          {adminModeEnabled ? (
+            <NavButton active={activeTab === 'dashboard'} onClick={() => handleTabChange('dashboard')} icon={<LayoutDashboard size={20} />} label="Admin" isAdmin />
+          ) : (
+            <NavButton active={false} onClick={() => handleTabChange('settings')} icon={<SettingsIcon size={22} />} label="Settings" />
           )}
 
+          {/* Settings */}
           <NavButton active={activeTab === 'settings'} onClick={() => handleTabChange('settings')} icon={<SettingsIcon size={22} />} label="Settings" />
         </div>
       )}

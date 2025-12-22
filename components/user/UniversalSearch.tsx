@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import {
     Search, Film, Tv, PlayCircle, Plus, Check, Loader2,
-    ExternalLink, Clock
+    ExternalLink, Monitor
 } from 'lucide-react';
 import { api } from '../../services/api';
-import { AppConfig, MediaType, UniversalMediaItem, Status } from '../../types';
+import { AppConfig, MediaType } from '../../types';
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
-import { launchJellyfin } from '../../services/deepLinkService';
+import { launchJellyfin, launchStreamingApp, openInBrowser } from '../../services/deepLinkService';
+import { getStreamingAvailability, StreamingOffer } from '../../services/justWatchService';
 
 const UniversalSearch: React.FC = () => {
     const [query, setQuery] = useState('');
@@ -16,6 +17,9 @@ const UniversalSearch: React.FC = () => {
     const [searchType, setSearchType] = useState<'all' | 'movie' | 'tv'>('all');
     const [requestingIds, setRequestingIds] = useState<Record<string, 'loading' | 'done' | 'error'>>({});
     const [error, setError] = useState<string | null>(null);
+    const [expandedItem, setExpandedItem] = useState<string | null>(null);
+    const [streamingOffers, setStreamingOffers] = useState<Record<string, StreamingOffer[]>>({});
+    const [loadingOffers, setLoadingOffers] = useState<Record<string, boolean>>({});
 
     const handleSearch = async (e?: React.FormEvent) => {
         e?.preventDefault();
@@ -24,6 +28,8 @@ const UniversalSearch: React.FC = () => {
         setIsLoading(true);
         setError(null);
         setResults([]);
+        setExpandedItem(null);
+        setStreamingOffers({});
 
         try {
             const saved = localStorage.getItem('dashboarrd_config');
@@ -34,11 +40,9 @@ const UniversalSearch: React.FC = () => {
             }
             const config: AppConfig = JSON.parse(saved);
 
-            // Search via Jellyseerr (includes TMDB and library status)
             if (config.jellyseerr?.enabled) {
                 const searchResults = await api.jellyseerrSearch(config.jellyseerr, query);
 
-                // Filter by type if needed
                 const filtered = searchType === 'all'
                     ? searchResults
                     : searchResults.filter((r: any) =>
@@ -57,6 +61,32 @@ const UniversalSearch: React.FC = () => {
             setError("Search failed. Check your connection.");
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleExpand = async (item: any) => {
+        const key = String(item.tmdbId || item.id);
+
+        if (expandedItem === key) {
+            setExpandedItem(null);
+            return;
+        }
+
+        setExpandedItem(key);
+
+        // Fetch streaming availability if we haven't already
+        if (!streamingOffers[key] && !loadingOffers[key] && item.tmdbId) {
+            setLoadingOffers(prev => ({ ...prev, [key]: true }));
+            try {
+                const type = item.mediaType === 'movie' ? 'movie' : 'tv';
+                const offers = await getStreamingAvailability(item.tmdbId, type);
+                setStreamingOffers(prev => ({ ...prev, [key]: offers }));
+            } catch (e) {
+                console.error('Failed to fetch streaming offers:', e);
+                setStreamingOffers(prev => ({ ...prev, [key]: [] }));
+            } finally {
+                setLoadingOffers(prev => ({ ...prev, [key]: false }));
+            }
         }
     };
 
@@ -86,8 +116,7 @@ const UniversalSearch: React.FC = () => {
         }
     };
 
-    const handlePlay = async (item: any) => {
-        // If available in library, launch Jellyfin
+    const handlePlayJellyfin = async () => {
         const saved = localStorage.getItem('dashboarrd_config');
         if (saved) {
             const config: AppConfig = JSON.parse(saved);
@@ -95,76 +124,178 @@ const UniversalSearch: React.FC = () => {
                 if (Capacitor.isNativePlatform()) {
                     await Haptics.impact({ style: ImpactStyle.Medium });
                 }
-                // For now, just open Jellyfin. With proper integration we'd pass the item ID
                 await launchJellyfin(config.jellyfin.url);
             }
         }
     };
 
+    const handleLaunchService = async (offer: StreamingOffer) => {
+        if (Capacitor.isNativePlatform()) {
+            await Haptics.impact({ style: ImpactStyle.Medium });
+        }
+
+        // Try to open the URL directly, or fallback to app launch
+        if (offer.url) {
+            openInBrowser(offer.url);
+        } else {
+            await launchStreamingApp(offer.providerId as any);
+        }
+    };
+
+    const handleViewOnTMDB = (item: any) => {
+        const type = item.mediaType === 'movie' ? 'movie' : 'tv';
+        openInBrowser(`https://www.themoviedb.org/${type}/${item.tmdbId}`);
+    };
+
     const ResultCard: React.FC<{ item: any }> = ({ item }) => {
-        const key = item.tmdbId || item.title;
+        const key = String(item.tmdbId || item.id);
         const isRequesting = requestingIds[key] === 'loading';
-        const isRequested = requestingIds[key] === 'done' || item.added;
-        const isAvailable = item.added;
+        const isRequested = requestingIds[key] === 'done' || item.requested;
+        const isInLibrary = item.added || item.mediaInfo?.status === 5;
+        const isExpanded = expandedItem === key;
+        const offers = streamingOffers[key] || [];
+        const isLoadingStreamingOffers = loadingOffers[key];
+
+        // Filter to only subscription/free services
+        const subscriptionOffers = offers.filter(o => o.type === 'flatrate' || o.type === 'free' || o.type === 'ads');
 
         return (
-            <div className="bg-helm-800 rounded-xl border border-helm-700 overflow-hidden flex">
-                {/* Poster */}
-                <div className="w-24 h-36 bg-helm-900 flex-shrink-0">
-                    {item.images?.[0]?.remoteUrl ? (
-                        <img
-                            src={item.images[0].remoteUrl}
-                            alt={item.title}
-                            className="w-full h-full object-cover"
-                        />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center text-helm-600">
-                            {item.mediaType === 'movie' ? <Film size={24} /> : <Tv size={24} />}
-                        </div>
-                    )}
-                </div>
-
-                {/* Details */}
-                <div className="flex-1 p-3 flex flex-col justify-between min-w-0">
-                    <div>
-                        <h3 className="font-semibold text-white text-sm truncate">{item.title}</h3>
-                        <p className="text-xs text-helm-500">
-                            {item.year} • {item.mediaType === 'movie' ? 'Movie' : 'TV Series'}
-                        </p>
-                        <p className="text-xs text-helm-400 mt-1 line-clamp-2">{item.overview}</p>
+            <div className="bg-helm-800 rounded-xl border border-helm-700 overflow-hidden">
+                <div className="flex cursor-pointer" onClick={() => handleExpand(item)}>
+                    {/* Poster */}
+                    <div className="w-20 h-30 bg-helm-900 flex-shrink-0">
+                        {item.images?.[0]?.remoteUrl || item.posterPath ? (
+                            <img
+                                src={item.images?.[0]?.remoteUrl || `https://image.tmdb.org/t/p/w200${item.posterPath}`}
+                                alt={item.title}
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center text-helm-600">
+                                {item.mediaType === 'movie' ? <Film size={20} /> : <Tv size={20} />}
+                            </div>
+                        )}
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex gap-2 mt-2">
-                        {isAvailable ? (
-                            <button
-                                onClick={() => handlePlay(item)}
-                                className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-xs font-medium text-white transition-all active:scale-95"
-                            >
-                                <PlayCircle size={14} />
-                                Play
-                            </button>
-                        ) : isRequested ? (
-                            <div className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-emerald-600/20 rounded-lg text-xs font-medium text-emerald-400">
-                                <Check size={14} />
-                                Requested
+                    {/* Details */}
+                    <div className="flex-1 p-3 min-w-0">
+                        <div className="flex items-start justify-between">
+                            <div className="flex-1 min-w-0">
+                                <h3 className="font-semibold text-white text-sm truncate">{item.title || item.name}</h3>
+                                <p className="text-xs text-helm-500">
+                                    {item.releaseDate?.substring(0, 4) || item.firstAirDate?.substring(0, 4) || item.year} • {item.mediaType === 'movie' ? 'Movie' : 'TV'}
+                                </p>
                             </div>
-                        ) : (
-                            <button
-                                onClick={() => handleRequest(item)}
-                                disabled={isRequesting}
-                                className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-helm-accent hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-xs font-medium text-white transition-all active:scale-95"
-                            >
-                                {isRequesting ? (
-                                    <Loader2 size={14} className="animate-spin" />
-                                ) : (
-                                    <Plus size={14} />
+
+                            {isInLibrary ? (
+                                <span className="ml-2 px-2 py-0.5 bg-purple-500/20 text-purple-400 text-[10px] font-bold rounded-full flex-shrink-0">
+                                    JELLYFIN
+                                </span>
+                            ) : isRequested ? (
+                                <span className="ml-2 px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold rounded-full flex-shrink-0">
+                                    REQUESTED
+                                </span>
+                            ) : null}
+                        </div>
+
+                        <p className="text-xs text-helm-400 mt-1 line-clamp-2">{item.overview}</p>
+
+                        {/* Streaming badges preview */}
+                        {subscriptionOffers.length > 0 && !isExpanded && (
+                            <div className="flex gap-1 mt-2">
+                                {subscriptionOffers.slice(0, 4).map(offer => (
+                                    <span key={offer.providerId} className={`px-1.5 py-0.5 ${offer.color} rounded text-[8px] font-bold text-white`}>
+                                        {offer.providerName.substring(0, 3).toUpperCase()}
+                                    </span>
+                                ))}
+                                {subscriptionOffers.length > 4 && (
+                                    <span className="text-[10px] text-helm-500">+{subscriptionOffers.length - 4}</span>
                                 )}
-                                {isRequesting ? 'Requesting...' : 'Request'}
-                            </button>
+                            </div>
                         )}
                     </div>
                 </div>
+
+                {/* Expanded Actions */}
+                {isExpanded && (
+                    <div className="p-3 pt-0 space-y-3 border-t border-helm-700/50 mt-2">
+                        {/* Watch Options */}
+                        <div className="space-y-2">
+                            <p className="text-[10px] text-helm-500 uppercase font-bold tracking-wider">Watch On</p>
+
+                            {/* Loading indicator */}
+                            {isLoadingStreamingOffers && (
+                                <div className="flex items-center gap-2 py-2">
+                                    <Loader2 size={14} className="animate-spin text-helm-500" />
+                                    <span className="text-xs text-helm-500">Finding streaming options...</span>
+                                </div>
+                            )}
+
+                            {/* Jellyfin - if in library */}
+                            {isInLibrary && (
+                                <button
+                                    onClick={handlePlayJellyfin}
+                                    className="w-full flex items-center gap-3 p-2.5 bg-purple-600 hover:bg-purple-500 rounded-lg transition-all active:scale-[0.98]"
+                                >
+                                    <PlayCircle size={18} className="text-white" />
+                                    <div className="flex-1 text-left">
+                                        <p className="text-sm font-medium text-white">Play on Jellyfin</p>
+                                        <p className="text-[10px] text-purple-200">Available in your library</p>
+                                    </div>
+                                </button>
+                            )}
+
+                            {/* Streaming Services from JustWatch */}
+                            {subscriptionOffers.map(offer => (
+                                <button
+                                    key={offer.providerId}
+                                    onClick={() => handleLaunchService(offer)}
+                                    className={`w-full flex items-center gap-3 p-2.5 ${offer.color} hover:opacity-90 rounded-lg transition-all active:scale-[0.98]`}
+                                >
+                                    <Monitor size={18} className="text-white" />
+                                    <div className="flex-1 text-left">
+                                        <p className="text-sm font-medium text-white">{offer.providerName}</p>
+                                        <p className="text-[10px] text-white/70 capitalize">
+                                            {offer.type === 'flatrate' ? 'Subscription' : offer.type === 'free' ? 'Free' : offer.type}
+                                        </p>
+                                    </div>
+                                    <ExternalLink size={14} className="text-white/50" />
+                                </button>
+                            ))}
+
+                            {/* No streaming options message */}
+                            {!isLoadingStreamingOffers && !isInLibrary && subscriptionOffers.length === 0 && (
+                                <p className="text-xs text-helm-500 py-2">No streaming options found in your region</p>
+                            )}
+                        </div>
+
+                        {/* Request / TMDB */}
+                        <div className="flex gap-2">
+                            {!isInLibrary && !isRequested && (
+                                <button
+                                    onClick={() => handleRequest(item)}
+                                    disabled={isRequesting}
+                                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-helm-accent hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-xs font-bold text-white transition-all active:scale-95"
+                                >
+                                    {isRequesting ? (
+                                        <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                        <Plus size={14} />
+                                    )}
+                                    {isRequesting ? 'Requesting...' : 'Request to Library'}
+                                </button>
+                            )}
+
+                            <button
+                                onClick={() => handleViewOnTMDB(item)}
+                                className="flex items-center justify-center gap-1.5 py-2.5 px-4 bg-helm-700 hover:bg-helm-600 rounded-lg text-xs font-medium text-helm-300 transition-all active:scale-95"
+                            >
+                                <ExternalLink size={12} />
+                                TMDB
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     };
@@ -173,10 +304,10 @@ const UniversalSearch: React.FC = () => {
         <div className="h-full flex flex-col">
             {/* Search Header */}
             <div className="p-4 pb-2 bg-helm-900 sticky top-0 z-10">
-                <h1 className="text-2xl font-bold text-white mb-3">Search</h1>
+                <h1 className="text-2xl font-bold text-white mb-1">Search</h1>
+                <p className="text-xs text-helm-500 mb-3">Find where to watch any movie or show</p>
 
                 <form onSubmit={handleSearch} className="space-y-3">
-                    {/* Search Input */}
                     <div className="relative">
                         <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-helm-500" />
                         <input
@@ -188,7 +319,6 @@ const UniversalSearch: React.FC = () => {
                         />
                     </div>
 
-                    {/* Type Filter */}
                     <div className="flex gap-2">
                         {[
                             { value: 'all', label: 'All' },
@@ -200,8 +330,8 @@ const UniversalSearch: React.FC = () => {
                                 type="button"
                                 onClick={() => setSearchType(value as any)}
                                 className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold border transition-all ${searchType === value
-                                        ? 'bg-helm-accent border-helm-accent text-white'
-                                        : 'bg-helm-800 border-helm-700 text-helm-400'
+                                    ? 'bg-helm-accent border-helm-accent text-white'
+                                    : 'bg-helm-800 border-helm-700 text-helm-400'
                                     }`}
                             >
                                 {icon}
@@ -228,7 +358,7 @@ const UniversalSearch: React.FC = () => {
                     <div className="text-center py-12">
                         <Search size={32} className="mx-auto text-helm-600 mb-3" />
                         <p className="text-sm text-helm-400">Search for movies and TV shows</p>
-                        <p className="text-xs text-helm-600 mt-1">Results from Jellyseerr & TMDB</p>
+                        <p className="text-xs text-helm-600 mt-1">See where to stream or request to your library</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
