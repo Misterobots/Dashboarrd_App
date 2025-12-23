@@ -1,6 +1,18 @@
 import { Capacitor } from '@capacitor/core';
 import { CapacitorHttp } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
+import {
+    isOIDCAvailable,
+    initiateOIDCLogin,
+    handleOAuthCallback as oidcHandleCallback,
+    getCurrentUser as oidcGetCurrentUser,
+    areTokensExpired,
+    refreshAccessToken,
+    revokeTokens,
+    clearTokens,
+    getStoredTokens,
+    OIDCUser
+} from './oidcService';
 
 /**
  * Authelia Authentication Service
@@ -8,8 +20,8 @@ import { Browser } from '@capacitor/browser';
  * Integrates with Authelia SSO at login.shivelymedia.com
  * Admin access granted to users in 'misterobots' group
  * 
- * For mobile apps, we use a "login then verify" flow since
- * Authelia's redirect validation blocks non-web URLs.
+ * Primary: OAuth2/OIDC with PKCE (token-based, works on mobile)
+ * Fallback: Cookie-based auth (for web or if OIDC not configured)
  */
 
 const ADMIN_GROUP = 'misterobots';
@@ -28,7 +40,10 @@ export interface AuthStatus {
     user: AuthUser | null;
 }
 
-// Helper to make HTTP requests with cookies
+// Track if OIDC is available
+let oidcAvailable: boolean | null = null;
+
+// Helper to make HTTP requests with cookies (fallback method)
 async function makeRequest(url: string, options: RequestInit = {}): Promise<Response> {
     if (Capacitor.isNativePlatform()) {
         const response = await CapacitorHttp.request({
@@ -70,13 +85,60 @@ function getAutheliaUrl(): string {
 }
 
 /**
- * Check if user is authenticated with Authelia
+ * Convert OIDC user to AuthUser format
+ */
+function oidcUserToAuthUser(oidcUser: OIDCUser): AuthUser {
+    return {
+        username: oidcUser.username,
+        displayName: oidcUser.name || oidcUser.username,
+        email: oidcUser.email || '',
+        groups: oidcUser.groups || [],
+        isAdmin: (oidcUser.groups || []).includes(ADMIN_GROUP)
+    };
+}
+
+/**
+ * Check if OIDC is available (cached)
+ */
+async function checkOIDCAvailable(): Promise<boolean> {
+    if (oidcAvailable !== null) return oidcAvailable;
+    oidcAvailable = await isOIDCAvailable();
+    console.log('OIDC availability:', oidcAvailable);
+    return oidcAvailable;
+}
+
+/**
+ * Check if user is authenticated
+ * Tries OIDC tokens first, falls back to cookie-based auth
  */
 export async function checkAuthStatus(): Promise<AuthStatus> {
-    const autheliaUrl = getAutheliaUrl();
+    // First, try OIDC token-based auth
+    const tokens = getStoredTokens();
+    if (tokens) {
+        // Check if tokens are expired
+        if (areTokensExpired()) {
+            console.log('Auth: Tokens expired, attempting refresh...');
+            const refreshed = await refreshAccessToken();
+            if (!refreshed) {
+                console.log('Auth: Token refresh failed, clearing tokens');
+                clearTokens();
+            }
+        }
 
+        // Get user from tokens
+        const oidcUser = oidcGetCurrentUser();
+        if (oidcUser) {
+            console.log('Auth: Authenticated via OIDC tokens');
+            return {
+                authenticated: true,
+                user: oidcUserToAuthUser(oidcUser)
+            };
+        }
+    }
+
+    // Fallback: Try cookie-based auth (works on web, may not work on mobile)
+    const autheliaUrl = getAutheliaUrl();
     try {
-        // Try the userinfo endpoint (returns user data if authenticated)
         const response = await makeRequest(`${autheliaUrl}/api/user/info`, {
             method: 'GET',
             headers: {
@@ -84,10 +146,11 @@ export async function checkAuthStatus(): Promise<AuthStatus> {
             }
         });
 
+        console.log('Auth status:', response);
+
         if (response.ok) {
             const data = await response.json();
 
-            // Authelia returns user info if authenticated
             if (data && data.username) {
                 const user: AuthUser = {
                     username: data.username || '',
@@ -96,11 +159,11 @@ export async function checkAuthStatus(): Promise<AuthStatus> {
                     groups: data.groups || [],
                     isAdmin: (data.groups || []).includes(ADMIN_GROUP)
                 };
+                console.log('Auth: Authenticated via cookies');
                 return { authenticated: true, user };
             }
         }
 
-        // Not authenticated
         return { authenticated: false, user: null };
     } catch (error) {
         console.error('Auth check failed:', error);
@@ -109,25 +172,45 @@ export async function checkAuthStatus(): Promise<AuthStatus> {
 }
 
 /**
- * Open Authelia login in IN-APP browser (WebView)
- * This keeps cookies in the same context so auth works after login
+ * Handle OAuth callback from redirect
+ */
+export async function handleOAuthCallback(code: string, state?: string): Promise<AuthStatus> {
+    const oidcUser = await oidcHandleCallback(code, state);
+    if (oidcUser) {
+        const user = oidcUserToAuthUser(oidcUser);
+        saveAuthState(user);
+        return { authenticated: true, user };
+    }
+    return { authenticated: false, user: null };
+}
+
+/**
+ * Open login - uses OIDC if available, falls back to cookie-based
  */
 export async function openLogin(): Promise<void> {
     const autheliaUrl = getAutheliaUrl();
 
-    // Set redirect to Authelia itself
-    const loginUrl = `${autheliaUrl}/?rd=${encodeURIComponent(autheliaUrl)}`;
+    // Check if OIDC is available
+    const useOIDC = await checkOIDCAvailable();
 
-    console.log('Opening Authelia login (in-app):', loginUrl);
-
-    if (Capacitor.isNativePlatform()) {
-        // Use fullscreen in-app WebView that shares cookies with the app
-        await Browser.open({
-            url: loginUrl,
-            presentationStyle: 'fullscreen'
-        });
+    if (useOIDC && Capacitor.isNativePlatform()) {
+        // Use OIDC flow on mobile (primary method)
+        console.log('Auth: Using OIDC login flow');
+        await initiateOIDCLogin();
     } else {
-        window.location.href = loginUrl;
+        // Fallback to cookie-based login
+        // Set redirect to Authelia itself
+        const loginUrl = `${autheliaUrl}/?rd=${encodeURIComponent(autheliaUrl)}`;
+        console.log('Auth: Opening cookie-based login:', loginUrl);
+
+        if (Capacitor.isNativePlatform()) {
+            await Browser.open({
+                url: loginUrl,
+                presentationStyle: 'fullscreen'
+            });
+        } else {
+            window.location.href = loginUrl;
+        }
     }
 }
 
@@ -135,10 +218,16 @@ export async function openLogin(): Promise<void> {
  * Logout from Authelia
  */
 export async function logout(): Promise<void> {
+    // Revoke OIDC tokens if present
+    const tokens = getStoredTokens();
+    if (tokens) {
+        await revokeTokens();
+    }
+
     const autheliaUrl = getAutheliaUrl();
 
     try {
-        // Try API logout
+        // Also try API logout for cookie-based sessions
         await makeRequest(`${autheliaUrl}/api/logout`, {
             method: 'POST'
         });
@@ -188,6 +277,10 @@ export function getCachedAuthState(): AuthUser | null {
  * Clear cached auth state
  */
 export function clearAuthState(): void {
+    // Clear tokens
+    clearTokens();
+
+    // Clear cached user
     const saved = localStorage.getItem('dashboarrd_config');
     if (saved) {
         try {

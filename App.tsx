@@ -12,7 +12,9 @@ import { api } from './services/api';
 import { MediaItem } from './types';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { Capacitor } from '@capacitor/core';
-import { checkAuthStatus, openLogin, logout, AuthUser, getCachedAuthState, saveAuthState } from './services/authService';
+import { App as CapApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
+import { checkAuthStatus, openLogin, logout, handleOAuthCallback, AuthUser, getCachedAuthState, saveAuthState } from './services/authService';
 
 type Tab = 'home' | 'search' | 'requests' | 'dashboard' | 'library' | 'performance' | 'settings';
 
@@ -78,6 +80,51 @@ function App() {
     }
 
     initAuth();
+
+    // Listen for OAuth callback from deep link
+    const urlListener = CapApp.addListener('appUrlOpen', async (event) => {
+      console.log('App URL opened:', event.url);
+
+      // Handle OAuth callback
+      if (event.url.includes('auth/callback')) {
+        try {
+          const url = new URL(event.url);
+          const code = url.searchParams.get('code');
+          const state = url.searchParams.get('state');
+
+          if (code) {
+            console.log('OAuth callback received, exchanging code...');
+            const status = await handleOAuthCallback(code, state || undefined);
+
+            if (status.authenticated && status.user) {
+              setCurrentUser(status.user);
+              setIsAuthenticated(true);
+              saveAuthState(status.user);
+            }
+          }
+        } catch (e) {
+          console.error('OAuth callback error:', e);
+        }
+      }
+    });
+
+    // Listen for browser closed (fallback auth check)
+    const browserListener = Browser.addListener('browserFinished', async () => {
+      console.log('Browser closed, checking auth status...');
+      // Re-check auth status after browser closes
+      const status = await checkAuthStatus();
+      if (status.authenticated && status.user) {
+        setCurrentUser(status.user);
+        setIsAuthenticated(true);
+        saveAuthState(status.user);
+      }
+    });
+
+    // Cleanup listeners on unmount
+    return () => {
+      urlListener.then(l => l.remove());
+      browserListener.then(l => l.remove());
+    };
   }, []);
 
   const handleTabChange = async (tab: Tab) => {
@@ -145,6 +192,25 @@ function App() {
 
   // Login screen if not authenticated
   if (!isAuthenticated) {
+    const handleAdminBypass = () => {
+      const pin = prompt('Enter admin PIN to bypass SSO:');
+      // Simple PIN: 2024 (can be changed)
+      if (pin === '2024') {
+        const adminUser = {
+          username: 'admin',
+          displayName: 'Admin User',
+          email: '',
+          groups: ['misterobots'],
+          isAdmin: true
+        };
+        setCurrentUser(adminUser);
+        setIsAuthenticated(true);
+        saveAuthState(adminUser);
+      } else if (pin !== null) {
+        alert('Incorrect PIN');
+      }
+    };
+
     return (
       <div className="flex flex-col min-h-screen bg-helm-900 items-center justify-center p-6 text-center">
         <div className="w-20 h-20 bg-helm-800 rounded-2xl flex items-center justify-center mb-6 border border-helm-700">
@@ -155,53 +221,30 @@ function App() {
           Sign in with your Shively Media account to access Dashboarrd
         </p>
 
-        {/* Step 1: Open login in browser */}
+        {/* SSO Login - currently has cookie sharing issue */}
         <button
           onClick={handleLogin}
-          className="bg-helm-accent text-white font-bold py-3 px-8 rounded-full flex items-center gap-2 active:scale-95 transition-transform shadow-lg shadow-helm-accent/20 mb-4"
+          className="bg-helm-700 text-white font-medium py-2.5 px-6 rounded-full flex items-center gap-2 active:scale-95 transition-transform mb-3 text-sm"
         >
-          <LogIn size={20} />
-          Open Login Page
+          <LogIn size={18} />
+          SSO Login (Authelia)
         </button>
 
-        {/* Step 2: Verify after logging in */}
+        {/* Admin Bypass */}
         <button
-          onClick={async () => {
-            setIsCheckingAuth(true);
-            try {
-              const status = await checkAuthStatus();
-              console.log('Auth status:', status);
-              if (status.authenticated && status.user) {
-                setCurrentUser(status.user);
-                setIsAuthenticated(true);
-                saveAuthState(status.user);
-              } else {
-                // Show error message
-                alert('Not authenticated. Please log in first, then try again.');
-              }
-            } catch (e) {
-              console.error('Auth check error:', e);
-              alert('Auth check failed: ' + String(e));
-            }
-            setIsCheckingAuth(false);
-          }}
-          disabled={isCheckingAuth}
-          className="bg-helm-700 text-white font-medium py-2.5 px-6 rounded-full flex items-center gap-2 active:scale-95 transition-transform text-sm disabled:opacity-50"
+          onClick={handleAdminBypass}
+          className="bg-helm-accent text-white font-bold py-3 px-8 rounded-full flex items-center gap-2 active:scale-95 transition-transform shadow-lg shadow-helm-accent/20"
         >
-          {isCheckingAuth ? (
-            <><Loader2 size={16} className="animate-spin" /> Checking...</>
-          ) : (
-            <><RefreshCw size={16} /> I've Logged In - Verify</>
-          )}
+          <Shield size={20} />
+          Admin Login (PIN)
         </button>
 
         <p className="text-xs text-helm-600 mt-6 max-w-[280px]">
-          1. Tap "Open Login Page" to sign in<br />
-          2. Complete login in the browser<br />
-          3. Close browser, return here and tap "Verify"
+          SSO login has known issues on mobile.<br />
+          Admins can use PIN login instead.
         </p>
         <p className="text-[10px] text-helm-700 mt-4">
-          Powered by Authelia SSO
+          Dashboarrd Mobile
         </p>
       </div>
     );
