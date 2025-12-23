@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { CapacitorHttp } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 
 /**
  * Authelia Authentication Service
@@ -12,6 +13,7 @@ import { CapacitorHttp } from '@capacitor/core';
  */
 
 const ADMIN_GROUP = 'misterobots';
+const DEFAULT_AUTHELIA_URL = 'https://login.shivelymedia.com';
 
 export interface AuthUser {
     username: string;
@@ -57,10 +59,14 @@ async function makeRequest(url: string, options: RequestInit = {}): Promise<Resp
 function getAutheliaUrl(): string {
     const saved = localStorage.getItem('dashboarrd_config');
     if (saved) {
-        const config = JSON.parse(saved);
-        return config.autheliaUrl || 'https://login.shivelymedia.com';
+        try {
+            const config = JSON.parse(saved);
+            return config.autheliaUrl || DEFAULT_AUTHELIA_URL;
+        } catch {
+            return DEFAULT_AUTHELIA_URL;
+        }
     }
-    return 'https://login.shivelymedia.com';
+    return DEFAULT_AUTHELIA_URL;
 }
 
 /**
@@ -70,7 +76,7 @@ export async function checkAuthStatus(): Promise<AuthStatus> {
     const autheliaUrl = getAutheliaUrl();
 
     try {
-        // Try the userinfo endpoint first (more reliable for getting user data)
+        // Try the userinfo endpoint (returns user data if authenticated)
         const response = await makeRequest(`${autheliaUrl}/api/user/info`, {
             method: 'GET',
             headers: {
@@ -103,43 +109,31 @@ export async function checkAuthStatus(): Promise<AuthStatus> {
 }
 
 /**
- * Get the login URL - for mobile, we don't include redirect
- * User will log in via browser then return to app
+ * Open Authelia login in external browser
+ * For mobile apps, user logs in then returns to app and taps "Verify"
+ * 
+ * IMPORTANT: We open JUST the base Authelia URL with NO redirect parameter
+ * to avoid the "unsafe redirect" error
  */
-export function getLoginUrl(): string {
+export async function openLogin(): Promise<void> {
     const autheliaUrl = getAutheliaUrl();
 
-    if (Capacitor.isNativePlatform()) {
-        // For mobile: just open the login page, no redirect
-        // This avoids the "unsafe redirect" error
-        return autheliaUrl;
-    } else {
-        // For web: include redirect back to app
-        const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
-        return `${autheliaUrl}/?rd=${encodeURIComponent(currentUrl)}`;
-    }
-}
+    // Use just the base URL - no redirect parameter at all
+    // This avoids the "Redirection was determined to be unsafe" error
+    const loginUrl = autheliaUrl;
 
-/**
- * Get the logout URL
- */
-export function getLogoutUrl(): string {
-    const autheliaUrl = getAutheliaUrl();
-    return `${autheliaUrl}/logout`;
-}
-
-/**
- * Open Authelia login in browser
- * For mobile apps, user logs in then returns to app and taps "Verify Login"
- */
-export function openLogin(): void {
-    const loginUrl = getLoginUrl();
+    console.log('Opening Authelia login:', loginUrl);
 
     if (Capacitor.isNativePlatform()) {
-        // Open in system browser so cookies are shared
-        window.open(loginUrl, '_system');
+        // Use Capacitor Browser plugin to open in system browser
+        // This properly opens an external browser window
+        await Browser.open({
+            url: loginUrl,
+            presentationStyle: 'popover' // Opens in external browser
+        });
     } else {
-        window.location.href = loginUrl;
+        // For web, just navigate (will need to come back manually)
+        window.open(loginUrl, '_blank');
     }
 }
 
@@ -159,12 +153,7 @@ export async function logout(): Promise<void> {
     }
 
     // Clear local storage auth state
-    const saved = localStorage.getItem('dashboarrd_config');
-    if (saved) {
-        const config = JSON.parse(saved);
-        delete config.authUser;
-        localStorage.setItem('dashboarrd_config', JSON.stringify(config));
-    }
+    clearAuthState();
 }
 
 /**
@@ -191,8 +180,12 @@ export function saveAuthState(user: AuthUser | null): void {
 export function getCachedAuthState(): AuthUser | null {
     const saved = localStorage.getItem('dashboarrd_config');
     if (saved) {
-        const config = JSON.parse(saved);
-        return config.authUser || null;
+        try {
+            const config = JSON.parse(saved);
+            return config.authUser || null;
+        } catch {
+            return null;
+        }
     }
     return null;
 }
@@ -203,8 +196,12 @@ export function getCachedAuthState(): AuthUser | null {
 export function clearAuthState(): void {
     const saved = localStorage.getItem('dashboarrd_config');
     if (saved) {
-        const config = JSON.parse(saved);
-        delete config.authUser;
-        localStorage.setItem('dashboarrd_config', JSON.stringify(config));
+        try {
+            const config = JSON.parse(saved);
+            delete config.authUser;
+            localStorage.setItem('dashboarrd_config', JSON.stringify(config));
+        } catch {
+            // Ignore parse errors
+        }
     }
 }
