@@ -109,29 +109,25 @@ export async function checkAuthStatus(): Promise<AuthStatus> {
 }
 
 /**
- * Open Authelia login in external browser
- * For mobile apps, user logs in then returns to app and taps "Verify"
- * 
- * We set rd= to Authelia's own domain to bypass any referrer-based redirect detection
+ * Open Authelia login in IN-APP browser (WebView)
+ * This keeps cookies in the same context so auth works after login
  */
 export async function openLogin(): Promise<void> {
     const autheliaUrl = getAutheliaUrl();
 
-    // Set redirect to Authelia itself - this is a "safe" redirect that Authelia allows
-    // This prevents Authelia from trying to use the referer header as the redirect target
+    // Set redirect to Authelia itself
     const loginUrl = `${autheliaUrl}/?rd=${encodeURIComponent(autheliaUrl)}`;
 
-    console.log('Opening Authelia login:', loginUrl);
+    console.log('Opening Authelia login (in-app):', loginUrl);
 
     if (Capacitor.isNativePlatform()) {
-        // Use Capacitor Browser plugin to open in system browser
+        // Use fullscreen in-app WebView that shares cookies with the app
         await Browser.open({
             url: loginUrl,
-            presentationStyle: 'popover'
+            presentationStyle: 'fullscreen'
         });
     } else {
-        // For web, just navigate
-        window.open(loginUrl, '_blank');
+        window.location.href = loginUrl;
     }
 }
 

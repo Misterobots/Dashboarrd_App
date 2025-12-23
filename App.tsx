@@ -168,23 +168,37 @@ function App() {
         <button
           onClick={async () => {
             setIsCheckingAuth(true);
-            const status = await checkAuthStatus();
-            if (status.authenticated && status.user) {
-              setCurrentUser(status.user);
-              setIsAuthenticated(true);
-              saveAuthState(status.user);
+            try {
+              const status = await checkAuthStatus();
+              console.log('Auth status:', status);
+              if (status.authenticated && status.user) {
+                setCurrentUser(status.user);
+                setIsAuthenticated(true);
+                saveAuthState(status.user);
+              } else {
+                // Show error message
+                alert('Not authenticated. Please log in first, then try again.');
+              }
+            } catch (e) {
+              console.error('Auth check error:', e);
+              alert('Auth check failed: ' + String(e));
             }
             setIsCheckingAuth(false);
           }}
-          className="bg-helm-700 text-white font-medium py-2.5 px-6 rounded-full flex items-center gap-2 active:scale-95 transition-transform text-sm"
+          disabled={isCheckingAuth}
+          className="bg-helm-700 text-white font-medium py-2.5 px-6 rounded-full flex items-center gap-2 active:scale-95 transition-transform text-sm disabled:opacity-50"
         >
-          <RefreshCw size={16} />
-          I've Logged In - Verify
+          {isCheckingAuth ? (
+            <><Loader2 size={16} className="animate-spin" /> Checking...</>
+          ) : (
+            <><RefreshCw size={16} /> I've Logged In - Verify</>
+          )}
         </button>
 
         <p className="text-xs text-helm-600 mt-6 max-w-[280px]">
-          1. Tap "Open Login Page" to sign in via browser<br />
-          2. After logging in, return here and tap "Verify"
+          1. Tap "Open Login Page" to sign in<br />
+          2. Complete login in the browser<br />
+          3. Close browser, return here and tap "Verify"
         </p>
         <p className="text-[10px] text-helm-700 mt-4">
           Powered by Authelia SSO
