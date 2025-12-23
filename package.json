@@ -19,7 +19,7 @@
   "dependencies": {
     "@capacitor/android": "^6.0.0",
     "@capacitor/core": "^6.0.0",
-    "@capacitor/filesystem": "^8.0.0",
+    "@capacitor/filesystem": "^6.0.2",
     "@capacitor/haptics": "^6.0.0",
     "@m430/capacitor-app-install": "^0.0.3",
     "lucide-react": "^0.344.0",

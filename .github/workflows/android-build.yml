@@ -91,8 +91,8 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          npm install
-          npm install @capacitor/cli@6.0.0 @capacitor/android@6.0.0
+          npm install --legacy-peer-deps
+          npm install @capacitor/cli@6.0.0 @capacitor/android@6.0.0 --legacy-peer-deps
 
       - name: Build Web Project
         run: npm run build
