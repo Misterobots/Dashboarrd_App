@@ -1,10 +1,14 @@
-import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
+import { CapacitorHttp } from '@capacitor/core';
 
 /**
  * Authelia Authentication Service
  * 
  * Integrates with Authelia SSO at login.shivelymedia.com
  * Admin access granted to users in 'misterobots' group
+ * 
+ * For mobile apps, we use a "login then verify" flow since
+ * Authelia's redirect validation blocks non-web URLs.
  */
 
 const ADMIN_GROUP = 'misterobots';
@@ -22,7 +26,7 @@ export interface AuthStatus {
     user: AuthUser | null;
 }
 
-// Helper to make HTTP requests
+// Helper to make HTTP requests with cookies
 async function makeRequest(url: string, options: RequestInit = {}): Promise<Response> {
     if (Capacitor.isNativePlatform()) {
         const response = await CapacitorHttp.request({
@@ -66,50 +70,7 @@ export async function checkAuthStatus(): Promise<AuthStatus> {
     const autheliaUrl = getAutheliaUrl();
 
     try {
-        // Authelia's verify endpoint returns user info if authenticated
-        const response = await makeRequest(`${autheliaUrl}/api/verify`, {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json'
-            }
-        });
-
-        if (response.ok) {
-            // User is authenticated - parse headers for user info
-            const username = response.headers.get('Remote-User') || '';
-            const groups = (response.headers.get('Remote-Groups') || '').split(',').filter(g => g);
-            const email = response.headers.get('Remote-Email') || '';
-            const displayName = response.headers.get('Remote-Name') || username;
-
-            const user: AuthUser = {
-                username,
-                displayName,
-                email,
-                groups,
-                isAdmin: groups.includes(ADMIN_GROUP)
-            };
-
-            return { authenticated: true, user };
-        } else if (response.status === 401) {
-            // Not authenticated
-            return { authenticated: false, user: null };
-        } else {
-            console.error('Authelia verify error:', response.status);
-            return { authenticated: false, user: null };
-        }
-    } catch (error) {
-        console.error('Auth check failed:', error);
-        return { authenticated: false, user: null };
-    }
-}
-
-/**
- * Try to get user info from Authelia userinfo endpoint
- */
-export async function getUserInfo(): Promise<AuthUser | null> {
-    const autheliaUrl = getAutheliaUrl();
-
-    try {
+        // Try the userinfo endpoint first (more reliable for getting user data)
         const response = await makeRequest(`${autheliaUrl}/api/user/info`, {
             method: 'GET',
             headers: {
@@ -119,28 +80,44 @@ export async function getUserInfo(): Promise<AuthUser | null> {
 
         if (response.ok) {
             const data = await response.json();
-            return {
-                username: data.username || '',
-                displayName: data.display_name || data.username,
-                email: data.email || '',
-                groups: data.groups || [],
-                isAdmin: (data.groups || []).includes(ADMIN_GROUP)
-            };
+
+            // Authelia returns user info if authenticated
+            if (data && data.username) {
+                const user: AuthUser = {
+                    username: data.username || '',
+                    displayName: data.display_name || data.username,
+                    email: data.email || '',
+                    groups: data.groups || [],
+                    isAdmin: (data.groups || []).includes(ADMIN_GROUP)
+                };
+                return { authenticated: true, user };
+            }
         }
-        return null;
+
+        // Not authenticated
+        return { authenticated: false, user: null };
     } catch (error) {
-        console.error('Get user info failed:', error);
-        return null;
+        console.error('Auth check failed:', error);
+        return { authenticated: false, user: null };
     }
 }
 
 /**
- * Get the login URL to redirect to
+ * Get the login URL - for mobile, we don't include redirect
+ * User will log in via browser then return to app
  */
-export function getLoginUrl(returnUrl?: string): string {
+export function getLoginUrl(): string {
     const autheliaUrl = getAutheliaUrl();
-    const currentUrl = returnUrl || (typeof window !== 'undefined' ? window.location.href : '');
-    return `${autheliaUrl}/?rd=${encodeURIComponent(currentUrl)}`;
+
+    if (Capacitor.isNativePlatform()) {
+        // For mobile: just open the login page, no redirect
+        // This avoids the "unsafe redirect" error
+        return autheliaUrl;
+    } else {
+        // For web: include redirect back to app
+        const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
+        return `${autheliaUrl}/?rd=${encodeURIComponent(currentUrl)}`;
+    }
 }
 
 /**
@@ -152,14 +129,17 @@ export function getLogoutUrl(): string {
 }
 
 /**
- * Redirect to Authelia login
+ * Open Authelia login in browser
+ * For mobile apps, user logs in then returns to app and taps "Verify Login"
  */
-export function redirectToLogin(): void {
+export function openLogin(): void {
+    const loginUrl = getLoginUrl();
+
     if (Capacitor.isNativePlatform()) {
-        // On mobile, open in system browser
-        window.open(getLoginUrl(), '_system');
+        // Open in system browser so cookies are shared
+        window.open(loginUrl, '_system');
     } else {
-        window.location.href = getLoginUrl();
+        window.location.href = loginUrl;
     }
 }
 
@@ -170,6 +150,7 @@ export async function logout(): Promise<void> {
     const autheliaUrl = getAutheliaUrl();
 
     try {
+        // Try API logout
         await makeRequest(`${autheliaUrl}/api/logout`, {
             method: 'POST'
         });
@@ -214,4 +195,16 @@ export function getCachedAuthState(): AuthUser | null {
         return config.authUser || null;
     }
     return null;
+}
+
+/**
+ * Clear cached auth state
+ */
+export function clearAuthState(): void {
+    const saved = localStorage.getItem('dashboarrd_config');
+    if (saved) {
+        const config = JSON.parse(saved);
+        delete config.authUser;
+        localStorage.setItem('dashboarrd_config', JSON.stringify(config));
+    }
 }

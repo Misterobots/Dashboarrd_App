@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Film, Settings as SettingsIcon, Loader2, Rocket, ArrowRight, CheckCircle2, Home, Search, Clock, LogIn, User, Shield } from 'lucide-react';
+import { LayoutDashboard, Film, Settings as SettingsIcon, Loader2, Rocket, ArrowRight, CheckCircle2, Home, Search, Clock, LogIn, Shield, RefreshCw } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import MediaCard from './components/MediaCard';
 import Performance from './components/Performance';
@@ -12,7 +12,7 @@ import { api } from './services/api';
 import { MediaItem } from './types';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { Capacitor } from '@capacitor/core';
-import { checkAuthStatus, redirectToLogin, logout, AuthUser, getCachedAuthState, saveAuthState, getUserInfo } from './services/authService';
+import { checkAuthStatus, openLogin, logout, AuthUser, getCachedAuthState, saveAuthState } from './services/authService';
 
 type Tab = 'home' | 'search' | 'requests' | 'dashboard' | 'library' | 'performance' | 'settings';
 
@@ -51,17 +51,9 @@ function App() {
           setIsAuthenticated(true);
           saveAuthState(status.user);
         } else {
-          // Try userinfo endpoint as fallback
-          const userInfo = await getUserInfo();
-          if (userInfo) {
-            setCurrentUser(userInfo);
-            setIsAuthenticated(true);
-            saveAuthState(userInfo);
-          } else {
-            setIsAuthenticated(false);
-            setCurrentUser(null);
-            saveAuthState(null);
-          }
+          setIsAuthenticated(false);
+          setCurrentUser(null);
+          saveAuthState(null);
         }
       } catch (e) {
         console.error('Auth check failed:', e);
@@ -99,7 +91,7 @@ function App() {
     if (Capacitor.isNativePlatform()) {
       await Haptics.impact({ style: ImpactStyle.Medium });
     }
-    redirectToLogin();
+    openLogin();
   };
 
   const handleLogout = async () => {
@@ -162,14 +154,39 @@ function App() {
         <p className="text-helm-400 text-sm max-w-xs mb-8">
           Sign in with your Shively Media account to access Dashboarrd
         </p>
+
+        {/* Step 1: Open login in browser */}
         <button
           onClick={handleLogin}
-          className="bg-helm-accent text-white font-bold py-3 px-8 rounded-full flex items-center gap-2 active:scale-95 transition-transform shadow-lg shadow-helm-accent/20"
+          className="bg-helm-accent text-white font-bold py-3 px-8 rounded-full flex items-center gap-2 active:scale-95 transition-transform shadow-lg shadow-helm-accent/20 mb-4"
         >
           <LogIn size={20} />
-          Sign In
+          Open Login Page
         </button>
-        <p className="text-xs text-helm-600 mt-6">
+
+        {/* Step 2: Verify after logging in */}
+        <button
+          onClick={async () => {
+            setIsCheckingAuth(true);
+            const status = await checkAuthStatus();
+            if (status.authenticated && status.user) {
+              setCurrentUser(status.user);
+              setIsAuthenticated(true);
+              saveAuthState(status.user);
+            }
+            setIsCheckingAuth(false);
+          }}
+          className="bg-helm-700 text-white font-medium py-2.5 px-6 rounded-full flex items-center gap-2 active:scale-95 transition-transform text-sm"
+        >
+          <RefreshCw size={16} />
+          I've Logged In - Verify
+        </button>
+
+        <p className="text-xs text-helm-600 mt-6 max-w-[280px]">
+          1. Tap "Open Login Page" to sign in via browser<br />
+          2. After logging in, return here and tap "Verify"
+        </p>
+        <p className="text-[10px] text-helm-700 mt-4">
           Powered by Authelia SSO
         </p>
       </div>
