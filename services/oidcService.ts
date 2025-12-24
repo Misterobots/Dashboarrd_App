@@ -341,11 +341,9 @@ export async function initiateOIDCLogin(): Promise<void> {
     console.log('OIDC: Opening authorization URL:', authUrl);
 
     if (Capacitor.isNativePlatform()) {
-        // Use popover style instead of fullscreen to try to fix rendering issues
-        await Browser.open({
-            url: authUrl,
-            windowName: '_blank'
-        });
+        // Open in external browser app instead of Chrome Custom Tabs
+        // Chrome Custom Tabs has rendering issues with Authelia
+        window.open(authUrl, '_system');
     } else {
         window.location.href = authUrl;
     }

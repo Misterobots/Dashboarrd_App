@@ -262,12 +262,22 @@ export async function hasInstallPermission(): Promise<boolean> {
  * Open Android settings to grant install permission
  */
 export async function requestInstallPermission(): Promise<void> {
-    if (!Capacitor.isNativePlatform()) return;
+    console.log('requestInstallPermission: starting');
+    if (!Capacitor.isNativePlatform()) {
+        console.log('requestInstallPermission: not native platform');
+        return;
+    }
 
     try {
+        console.log('requestInstallPermission: loading plugin');
         const AppInstall = await getAppInstallPlugin();
+        console.log('requestInstallPermission: plugin loaded:', AppInstall ? 'yes' : 'no');
         if (AppInstall) {
+            console.log('requestInstallPermission: calling openInstallSetting');
             await AppInstall.openInstallSetting();
+            console.log('requestInstallPermission: openInstallSetting returned');
+        } else {
+            console.error('requestInstallPermission: plugin not available');
         }
     } catch (error) {
         console.error('Failed to open install settings:', error);
