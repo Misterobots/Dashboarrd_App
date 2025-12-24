@@ -117,21 +117,16 @@ jobs:
       #     restore-keys: |
       #       ${{ runner.os }}-gradle-
 
-      - name: Initialize Android Platform
+      - name: Clear ALL Gradle and Android caches
         run: |
-          if [ ! -d "android" ]; then
-            echo "Android directory not found. Adding Android platform..."
-            npx cap add android
-          fi
+          rm -rf ~/.gradle
+          rm -rf android
+
+      - name: Initialize Android Platform
+        run: npx cap add android
 
       - name: Capacitor Sync
         run: npx cap sync android
-
-      - name: Clear ALL Gradle caches
-        run: |
-          rm -rf ~/.gradle/caches
-          rm -rf ~/.gradle/wrapper
-          rm -rf android/.gradle
 
       - name: Build Android APK
         run: |
