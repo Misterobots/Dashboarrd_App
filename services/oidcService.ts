@@ -130,8 +130,7 @@ export async function buildAuthorizationUrl(): Promise<string> {
         scope: SCOPES.join(' '),
         state: state,
         code_challenge: challenge,
-        code_challenge_method: 'S256',
-        prompt: 'login' // Force showing login page even if already logged in
+        code_challenge_method: 'S256'
     });
 
     return `${autheliaUrl}/api/oidc/authorization?${params.toString()}`;
