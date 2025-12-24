@@ -126,11 +126,16 @@ jobs:
       - name: Capacitor Sync
         run: npx cap sync android
 
+      - name: Clear corrupted Gradle caches
+        run: |
+          rm -rf ~/.gradle/caches/jars-*
+          rm -rf ~/.gradle/caches/transforms-*
+
       - name: Build Android APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
 
       - name: Rename APK with Version
         run: |
