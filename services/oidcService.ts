@@ -12,7 +12,7 @@ const DEFAULT_AUTHELIA_URL = 'https://login.shivelymedia.com';
 const CLIENT_ID = 'dashboarrd-mobile';
 const REDIRECT_URI_MOBILE = 'dashboarrd://auth/callback';
 const REDIRECT_URI_WEB = 'http://localhost/auth/callback';
-const SCOPES = ['openid', 'profile', 'email', 'groups'];
+const SCOPES = ['openid', 'profile', 'email', 'groups', 'offline_access'];
 
 // Token storage keys
 const TOKEN_STORAGE_KEY = 'dashboarrd_oidc_tokens';
