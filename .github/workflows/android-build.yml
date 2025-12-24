@@ -125,6 +125,12 @@ jobs:
       - name: Initialize Android Platform
         run: npx cap add android
 
+      - name: Upgrade Gradle Wrapper to 8.11
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew wrapper --gradle-version=8.11 --distribution-type=all
+
       - name: Capacitor Sync
         run: npx cap sync android
 
