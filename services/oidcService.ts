@@ -341,9 +341,10 @@ export async function initiateOIDCLogin(): Promise<void> {
     console.log('OIDC: Opening authorization URL:', authUrl);
 
     if (Capacitor.isNativePlatform()) {
+        // Use popover style instead of fullscreen to try to fix rendering issues
         await Browser.open({
             url: authUrl,
-            presentationStyle: 'fullscreen'
+            windowName: '_blank'
         });
     } else {
         window.location.href = authUrl;
