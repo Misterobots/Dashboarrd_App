@@ -130,7 +130,8 @@ export async function buildAuthorizationUrl(): Promise<string> {
         scope: SCOPES.join(' '),
         state: state,
         code_challenge: challenge,
-        code_challenge_method: 'S256'
+        code_challenge_method: 'S256',
+        prompt: 'login' // Force showing login page even if already logged in
     });
 
     return `${autheliaUrl}/api/oidc/authorization?${params.toString()}`;
@@ -341,9 +342,12 @@ export async function initiateOIDCLogin(): Promise<void> {
     console.log('OIDC: Opening authorization URL:', authUrl);
 
     if (Capacitor.isNativePlatform()) {
-        // Open in external browser app instead of Chrome Custom Tabs
-        // Chrome Custom Tabs has rendering issues with Authelia
-        window.open(authUrl, '_system');
+        // Use Chrome Custom Tabs - it handles custom scheme redirects properly
+        // prompt=login forces showing the login page
+        await Browser.open({
+            url: authUrl,
+            presentationStyle: 'popover'
+        });
     } else {
         window.location.href = authUrl;
     }
