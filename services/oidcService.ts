@@ -342,11 +342,10 @@ export async function initiateOIDCLogin(): Promise<void> {
     console.log('OIDC: Opening authorization URL:', authUrl);
 
     if (Capacitor.isNativePlatform()) {
-        // Use Chrome Custom Tabs - it handles custom scheme redirects properly
-        // prompt=login forces showing the login page
+        // Use Chrome Custom Tabs with default settings
+        // This should handle custom scheme redirects back to the app
         await Browser.open({
-            url: authUrl,
-            presentationStyle: 'popover'
+            url: authUrl
         });
     } else {
         window.location.href = authUrl;
