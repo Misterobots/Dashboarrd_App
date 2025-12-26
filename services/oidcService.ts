@@ -130,7 +130,8 @@ export async function buildAuthorizationUrl(): Promise<string> {
         scope: SCOPES.join(' '),
         state: state,
         code_challenge: challenge,
-        code_challenge_method: 'S256'
+        code_challenge_method: 'S256',
+        response_mode: 'query'
     });
 
     return `${autheliaUrl}/api/oidc/authorization?${params.toString()}`;
