@@ -33,6 +33,14 @@
                     android:pathPrefix="/callback" />
             </intent-filter>
 
+            <!-- HTTPS App Link (Auto Verify) -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="login.shivelymedia.com" android:pathPrefix="/auth/callback" />
+            </intent-filter>
+
         </activity>
 
         <provider

@@ -10,7 +10,7 @@ import { Browser } from '@capacitor/browser';
 
 const DEFAULT_AUTHELIA_URL = 'https://login.shivelymedia.com';
 const CLIENT_ID = 'dashboarrd-mobile';
-const REDIRECT_URI_MOBILE = 'dashboarrd://auth/callback';
+const REDIRECT_URI_MOBILE = 'https://login.shivelymedia.com/auth/callback';
 const REDIRECT_URI_WEB = 'http://localhost/auth/callback';
 const SCOPES = ['openid', 'profile', 'email', 'groups', 'offline_access'];
 
