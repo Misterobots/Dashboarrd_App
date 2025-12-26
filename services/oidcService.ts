@@ -121,7 +121,7 @@ export async function buildAuthorizationUrl(): Promise<string> {
     const state = generateRandomString(32);
 
     // Store state for validation
-    sessionStorage.setItem('oidc_state', state);
+    localStorage.setItem('oidc_state', state);
 
     const params = new URLSearchParams({
         response_type: 'code',
@@ -358,12 +358,12 @@ export async function initiateOIDCLogin(): Promise<void> {
  */
 export async function handleOAuthCallback(code: string, state?: string): Promise<OIDCUser | null> {
     // Validate state if provided
-    const storedState = sessionStorage.getItem('oidc_state');
+    const storedState = localStorage.getItem('oidc_state');
     if (state && storedState && state !== storedState) {
         console.error('OIDC: State mismatch');
         return null;
     }
-    sessionStorage.removeItem('oidc_state');
+    localStorage.removeItem('oidc_state');
 
     // Exchange code for tokens
     const tokens = await exchangeCodeForTokens(code);
