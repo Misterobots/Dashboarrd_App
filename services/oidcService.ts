@@ -341,13 +341,10 @@ export async function initiateOIDCLogin(): Promise<void> {
     console.log('OIDC: Opening authorization URL:', authUrl);
 
     if (Capacitor.isNativePlatform()) {
-        // Use external system browser (Chrome) instead of Custom Tabs
-        // This is often more reliable for handling deep link redirects (dashboarrd://)
-        // on emulators and some devices where Custom Tabs might hang/block redirects.
-        await Browser.open({
-            url: authUrl,
-            windowName: '_system'
-        });
+        // FORCE external system browser (Chrome/Safari App)
+        // Chrome Custom Tabs (Browser.open) can block deep link redirects.
+        // window.open(..., '_system') tells Capacitor/Cordova to break out of the app.
+        window.open(authUrl, '_system');
     } else {
         window.location.href = authUrl;
     }
