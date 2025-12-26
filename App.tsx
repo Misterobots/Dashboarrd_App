@@ -85,6 +85,10 @@ function App() {
     const urlListener = CapApp.addListener('appUrlOpen', async (event) => {
       console.log('App URL opened:', event.url);
 
+      // DEBUG: Show toast to confirm app received the link
+      setToast({ message: 'Deep Link Received: ' + event.url.substring(0, 30) + '...', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+
       // Handle OAuth callback
       if (event.url.includes('auth/callback')) {
         try {
