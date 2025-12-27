@@ -127,7 +127,8 @@ export async function buildAuthorizationUrl(): Promise<string> {
     const params = new URLSearchParams({
         response_type: 'code',
         client_id: CLIENT_ID,
-        redirect_uri: getRedirectUri(),
+        // BACK TO CUSTOM SCHEME: This is more reliable if assetlinks.json is missing
+        redirect_uri: 'dashboarrd://auth/callback',
         scope: SCOPES.join(' '),
         state: state,
         code_challenge: challenge,
