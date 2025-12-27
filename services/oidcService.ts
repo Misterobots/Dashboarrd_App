@@ -116,7 +116,8 @@ export function clearStoredVerifier(): void {
  * Build the authorization URL for Authelia OIDC
  */
 export async function buildAuthorizationUrl(): Promise<string> {
-    const autheliaUrl = getAutheliaUrl();
+    // Hardcode for consistency during debug
+    const autheliaUrl = 'https://login.shivelymedia.com';
     const { challenge } = await generatePKCE();
     const state = generateRandomString(32);
 
@@ -134,7 +135,12 @@ export async function buildAuthorizationUrl(): Promise<string> {
         response_mode: 'query'
     });
 
-    return `${autheliaUrl}/api/oidc/authorization?${params.toString()}`;
+    const fullUrl = `${autheliaUrl}/api/oidc/authorization?${params.toString()}`;
+    // DEBUG: Alert using standard window.alert which works in WebView
+    // This helps verify WE are sending the right URL
+    alert('Opening Auth URL:\n' + fullUrl);
+
+    return fullUrl;
 }
 
 /**
