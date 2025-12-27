@@ -10,7 +10,7 @@ import { Browser } from '@capacitor/browser';
 
 const DEFAULT_AUTHELIA_URL = 'https://login.shivelymedia.com';
 const CLIENT_ID = 'dashboarrd-mobile';
-const REDIRECT_URI_MOBILE = 'https://login.shivelymedia.com/auth/callback';
+const REDIRECT_URI_MOBILE = 'dashboarrd://auth/callback';
 const REDIRECT_URI_WEB = 'http://localhost/auth/callback';
 const SCOPES = ['openid', 'profile', 'email', 'groups', 'offline_access'];
 
@@ -127,8 +127,7 @@ export async function buildAuthorizationUrl(): Promise<string> {
     const params = new URLSearchParams({
         response_type: 'code',
         client_id: CLIENT_ID,
-        // BACK TO CUSTOM SCHEME: This is more reliable if assetlinks.json is missing
-        redirect_uri: 'dashboarrd://auth/callback',
+        redirect_uri: getRedirectUri(),
         scope: SCOPES.join(' '),
         state: state,
         code_challenge: challenge,
